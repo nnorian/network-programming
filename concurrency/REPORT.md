@@ -1,3 +1,6 @@
+```
+[nnorian@nnorian concurrency]$ dotnet --version
+10.0.112
 [nnorian@nnorian concurrency]$ lscpu | grep -E "Model name|Core|Thread|Socket"
 Model name:                              AMD Ryzen AI 7 350 w/ Radeon 860M
 Thread(s) per core:                      2
@@ -15,3 +18,4 @@ nvme0n1 MTFDKBA1T0QGN-1BN1AABGA nvme      0 953.9G
 7.2.7-arch1-1
 go version go1.27.1-X:nodwarf5 linux/amd64
 [nnorian@nnorian concurrency]$ 
+```
