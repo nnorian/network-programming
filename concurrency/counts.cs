@@ -14,5 +14,5 @@ class Counts{
         Zero += o.Zero;
     }
 
-    public override string ToString() => $"neg={Neg} pos{Pos} zero={Zero} total={Neg + Pos + Zero}";
+    public override string ToString() => $"neg={Neg} pos={Pos} zero={Zero} total={Neg + Pos + Zero}";
 }

@@ -6,7 +6,7 @@ static class Task1a{
         var workers = new Thread[threads];
 
         for (int i = 0; i < threads; i++){
-            int id = 1; 
+            int id = i;
             long start = id * partSize;
             long end = id == threads - 1 ? size : start + partSize;
             results[id] = new Counts();
@@ -23,7 +23,7 @@ static class Task1a{
     }
 
     static void CountPart(string path, long start, long end, Counts c){
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.read);
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read);
         long pos = start;
         if (start > 0){
             fs.Seek(start - 1, SeekOrigin.Begin);
@@ -41,7 +41,7 @@ static class Task1a{
                 break;
             }
             pos += line.Length + 1;
-            c.Add(int.Parse)
+            c.Add(int.Parse(line));
         }
     }
 }
