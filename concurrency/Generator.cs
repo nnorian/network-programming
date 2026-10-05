@@ -9,14 +9,16 @@ static class Generator
             w.WriteLine(rnd.Next(-1_000_000, 1_000_001)); // upper bound is exclusive
     }
 
-    // class for taks 2
+    // method for task 2
     //splitting the data
-    public static void Split(string path);
-    for (int p = 1; p<= 8; p++){
-        using var w = new StreamWriter($"part{p}.txt");
-        w.NewLine = "\n";
-        for (int i = 0; i < 6250000; i++){
-            w.WriteLine(r.ReadLine());
+    public static void Split(string path){
+        using var r = new StreamReader(path);
+        for (int p = 1; p<= 8; p++){
+            using var w = new StreamWriter($"part{p}.txt");
+            w.NewLine = "\n";
+            for (int i = 0; i < 6250000; i++){
+                w.WriteLine(r.ReadLine());
+            }
         }
     }
 }

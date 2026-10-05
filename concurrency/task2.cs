@@ -1,6 +1,6 @@
 static class Task2{
     public static Counts Run(string dir, int threads){
-        string[] files = Directory.GEtFiles(dir, "part*.txt");
+        string[] files = Directory.GetFiles(dir, "part*.txt");
         var results = new Counts[threads];
         var workers = new Thread[threads];
 
@@ -10,7 +10,7 @@ static class Task2{
             workers[id] = new Thread(() => {
                 for (int f = id; f< files.Length; f += threads){
                     byte[] buf = File.ReadAllBytes(files[f]);
-                    CountBuffer(buf, results[id])
+                    CountBuffer(buf, results[id]);
                 }
             });
             workers[id].Start();

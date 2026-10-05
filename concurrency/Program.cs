@@ -23,7 +23,7 @@ switch (task){
         c = Task2.Run(file, threads);
         break;
     default:
-        Console.WriteLine("usage: Lab1 <gen|1a> [threads] [file]");
+        Console.WriteLine("usage: Lab1 <gen|split|1a|2> [threads] [file|folder]");
         return;
 }
 
