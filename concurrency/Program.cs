@@ -8,11 +8,19 @@ if (task == "gen"){
     Generator.Generate(file);
     return;
 }
+
+if (task == "split"){
+    Generator.Split(file);
+    return;
+}
 var sw = Stopwatch.StartNew();
 Counts c;
 switch (task){
     case "1a":
         c= Task1a.Run(file, threads);
+        break;
+    case "2":
+        c = Task2.Run(file, threads);
         break;
     default:
         Console.WriteLine("usage: Lab1 <gen|1a> [threads] [file]");
