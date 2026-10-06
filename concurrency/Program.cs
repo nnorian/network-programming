@@ -1,18 +1,21 @@
 ﻿using System.Diagnostics;
 
 string task = args.Length > 0 ? args[0] : "";
-int threads = args.Length > 1 ? int.Parse(args[1]) : 1;
-string file = args.Length > 2 ? args[2] : "numbers.txt";
 
 if (task == "gen"){
-    Generator.Generate(file);
+    string genFile = args.Length > 1 ? args[1] : "numbers.txt";
+    Generator.Generate(genFile);
     return;
 }
 
 if (task == "split"){
-    Generator.Split(file);
+    string splitFile = args.Length > 1 ? args[1] : "numbers.txt";
+    Generator.Split(splitFile);
     return;
 }
+
+int threads = args.Length > 1 ? int.Parse(args[1]) : 1;
+string file = args.Length > 2 ? args[2] : "numbers.txt";
 var sw = Stopwatch.StartNew();
 Counts c;
 switch (task){
