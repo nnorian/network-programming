@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 
 string task = args.Length > 0 ? args[0] : "";
 
@@ -14,19 +14,26 @@ if (task == "split"){
     return;
 }
 
-int threads = args.Length > 1 ? int.Parse(args[1]) : 1;
+int threads = args.Length > 1 ? int.Parse(args[1]) : (task == "1b" ? Environment.ProcessorCount : 1);
 string file = args.Length > 2 ? args[2] : "numbers.txt";
 var sw = Stopwatch.StartNew();
 Counts c;
 switch (task){
     case "1a":
-        c= Task1a.Run(file, threads);
+        c = Task1a.Run(file, threads);
+        break;
+    case "1b":
+        string ver = args.Length > 3 ? args[3] : "";
+        c = Task1b.Run(file, threads, ver);
+        break;
+    case "1c":
+        c = Task1c.Run(file, threads);
         break;
     case "2":
         c = Task2.Run(file, threads);
         break;
     default:
-        Console.WriteLine("usage: Lab1 <gen|split|1a|2> [threads] [file|folder]");
+        Console.WriteLine("usage: Lab1 <gen|split|1a|1b|1c|2> [threads] [file|folder] [version]");
         return;
 }
 
