@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CoffeeShopClient/CoffeeShopClient.csproj" />
+  <Project Path="CoffeeShopServer/CoffeeShopServer.csproj" />
+</Solution>
