@@ -44,6 +44,7 @@ namespace CoffeeShopServer{
                     //task2
                     // one thread per client then back to accept at once
                     ClientConnection connection = new ClientConnection(socket, this, shop);
+                    Thread thread = new Thread(connection.Run);
                     thread.IsBackground = true;
                     thread.Start();
                 }

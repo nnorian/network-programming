@@ -9,25 +9,25 @@ using System.Threading;
 // Usage: CoffeeClient <address> <port> [client|provider]
 
 namespace CoffeeShopClient{
-    
+
     public class Program{
 
         private static Socket socket;
         private static readonly object sendLock  = new object();
-        private static volatine bool quitting = false;
+        private static volatile bool quitting = false;
 
         public static void Main(string[] args){
 
             int port;
-            
-            if(args.Length < 2 || args.Length > 3 || !int.TryParse(args[1], out port)){
+
+            if(args.Length < 2 || args.Length > 3 || !int.TryParse(args[1], out port) || port < 1 || port > 65535){
 
                 Console.WriteLine("Usage: dotnet run --project CoffeeClient -- <address> <port> [client|provider]");
                 return;
             }
 
             string role = "client";
-            
+
             if (args.Length == 3){
 
                 role = args[2].ToLower();
@@ -54,7 +54,7 @@ namespace CoffeeShopClient{
 
                 socket.Connect(new IPEndPoint(address, port));
             }
-            catch(SoketException ex){
+            catch(SocketException ex){
 
                 Console.WriteLine("Cannot connect to " + address + ":" + port + ": " + ex.SocketErrorCode);
                 return;
@@ -66,15 +66,15 @@ namespace CoffeeShopClient{
             // separate thread reveives so server messages are shown at once
 
             Thread receiver = new Thread(ReceiveLoop);
-            receiver.IsBackround = true;
+            receiver.IsBackground = true;
             receiver.Start();
 
             // task 4
             // heartbeat so the server notices if client netwoek is gone
 
-            Thread heartbeat = new Threat(heartbeatLoop);
-            heartbeat.IsBckgrounf = true;
-            hearbeat.Start();
+            Thread heartbeat = new Thread(HeartbeatLoop);
+            heartbeat.IsBackground = true;
+            heartbeat.Start();
 
             if (role == "provider"){
 
@@ -90,7 +90,7 @@ namespace CoffeeShopClient{
             // the main thread reads the keyboard
             while(true){
 
-                string line = COnsole.ReadLine();
+                string line = Console.ReadLine();
 
                 if (line == null || line.Trim().ToLower() == "quit") {
                     break;
@@ -100,7 +100,7 @@ namespace CoffeeShopClient{
                     continue;
 
                 }
-                
+
                 SendLine(line);
             }
 
@@ -115,15 +115,38 @@ namespace CoffeeShopClient{
             }
 
             socket.Close();
-            Console.Writeline("Me done here");
+            Console.WriteLine("Me done here");
 
         }
 
+        private static IPAddress FindAddress(string text){
+            IPAddress address;
+            if (IPAddress.TryParse(text, out address)){
+                if (address.AddressFamily == AddressFamily.InterNetwork){
+                    return address;
+                }
+                return null;
+            }
+
+            try{
+                foreach (IPAddress candidate in Dns.GetHostAddresses(text)){
+                    if (candidate.AddressFamily == AddressFamily.InterNetwork){
+                        return candidate;
+                    }
+                }
+            }
+            catch (SocketException){
+            }
+            catch (ArgumentException){
+            }
+            return null;
+        }
+
         private static void SendLine(string line){
-            byte[] data = Encoding.UTF*.GetBytes(line + "\n");
+            byte[] data = Encoding.UTF8.GetBytes(line + "\n");
 
             lock (sendLock){
-                
+
                 try {
 
                     int sent = 0;
@@ -131,82 +154,82 @@ namespace CoffeeShopClient{
 
                         sent += socket.Send(data, sent, data.Length - sent, SocketFlags.None);
                     }
-
-                    catch (Exception ex) when (ex is SocketException || ex is ObjectDisposedException){
-
-                        ServerGone("cannot send");
-                        
-                    }
-                }
-            }
-
-            // message end with \n
-
-            private static void ReceiveLoop(){
-                byte[] buffer = new byte[1024];
-                List<byte> message = new List<byte>();
-                try{
-                    while (true){
-                        int count = socket.Receive(buffer);
-
-                        if (count == 0){
-
-                            ServerGone("the server closed the connection");
-                            return;
-
-                        }
-
-                        for (int i = 0; i < count; i++ ){
-
-                            if (buffer[i] == byte '\n'){
-
-                                Console.WriteLine("<< " + Encoding.UTF8.GetString(message.ToArray()));
-                                message.Clear();
-                            }
-                            else{
-
-                                message.Add(buffer[i]);
-                            }
-                        }
-                    }
                 }
 
                 catch (Exception ex) when (ex is SocketException || ex is ObjectDisposedException){
 
-                    ServerGone("the connection is broken");
-                }
-
-            }
-
-            private static void HeartbeatLoop(){
-                while (true){
-                    Thread.Sleep(3000);
-                    SendLine("PING");
-                }
-            }
-
-            // task 4
-            // end cleanly when the seveer dissapears
-
-            private static void ServerGone(string reason){
-
-                if (quitting){
-
-                    return;
-                    Console.WriteLine("Disconnected: " + reason + ".");
-                }
-
-                try {
-                    socket.CLose();
-                }
-
-                catch (Exception){
+                    ServerGone("cannot send");
 
                 }
-
-                Environment.Exit(0);
             }
         }
 
+        // message end with \n
+
+        private static void ReceiveLoop(){
+            byte[] buffer = new byte[1024];
+            List<byte> message = new List<byte>();
+            try{
+                while (true){
+                    int count = socket.Receive(buffer);
+
+                    if (count == 0){
+
+                        ServerGone("the server closed the connection");
+                        return;
+
+                    }
+
+                    for (int i = 0; i < count; i++ ){
+
+                        if (buffer[i] == (byte)'\n'){
+
+                            Console.WriteLine("<< " + Encoding.UTF8.GetString(message.ToArray()));
+                            message.Clear();
+                        }
+                        else{
+
+                            message.Add(buffer[i]);
+                        }
+                    }
+                }
+            }
+
+            catch (Exception ex) when (ex is SocketException || ex is ObjectDisposedException){
+
+                ServerGone("the connection is broken");
+            }
+
+        }
+
+        private static void HeartbeatLoop(){
+            while (true){
+                Thread.Sleep(3000);
+                SendLine("PING");
+            }
+        }
+
+        // task 4
+        // end cleanly when the seveer dissapears
+
+        private static void ServerGone(string reason){
+
+            if (quitting){
+
+                return;
+            }
+
+            Console.WriteLine("Disconnected: " + reason + ".");
+
+            try {
+                socket.Close();
+            }
+
+            catch (Exception){
+
+            }
+
+            Environment.Exit(0);
+        }
     }
 }

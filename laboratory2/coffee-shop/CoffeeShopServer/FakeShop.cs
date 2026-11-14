@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace CoffeeServer
+namespace CoffeeShopServer
 {
     // ONLY FOR TESTING the network part before Student B's Shop is ready.
     // No real stock, no workers. Delete this file when Shop works.

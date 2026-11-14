@@ -5,7 +5,7 @@ namespace CoffeeShopServer{
 
     public class Program{
 
-        public static voif Main(string[] args){
+        public static void Main(string[] args){
 
             int port;
 
@@ -29,7 +29,8 @@ namespace CoffeeShopServer{
 
                 if (ex.SocketErrorCode == SocketError.AddressAlreadyInUse){
                     Console.WriteLine("Port " + port + " is already in use. Stop the other program or choose another port.");
-                else
+                }
+                else{
                     Console.WriteLine("Cannot start the server: " + ex.SocketErrorCode);
                 }
             }
