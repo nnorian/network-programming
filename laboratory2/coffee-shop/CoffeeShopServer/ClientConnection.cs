@@ -211,6 +211,117 @@ namespace CoffeeShopServer{
 
             // task 3
             // "HELLO PROVIDER" turns this connection into the provider
+
+            private void HandleHello(string[] parts){
+                if (parts.Length != 2 || pats[1].ToUpper() != "PROVIDER"){
+
+                    SendError("use: HELLO PROVIDER");
+                    return;
+                }
+
+                if (IsProvider){
+                    SendError("you are already the provider");
+                    return;
+                }
+
+                if (!server.TrySetProvider(this)){
+
+                    SendError("another provider is already connected");
+                    return;
+                }
+
+                IsProvider = true;
+                SendLine("OK PROVIDER");
+                Log.Write(Name, "is the provider");
+                // the shop sends the waiting alerts
+                shop.SetProvider(SendLine);
+            }
+
+            // task 3
+            // only the provider can   deliver
+
+            private voif HandleDeliver(string[] parts){
+
+                if (!IsProvider){
+
+                    SendError("only the provider can deliver");
+                    return;
+
+                }
+
+                Dictionary<string, int> items;
+                string error;
+                if (!Protocol.TryParseItems(parts, out items, out error)){
+
+                    SendError(error);
+                    return;
+                }
+
+                shop.Deliver(items);
+                SendLine("OK DELIVERED " + Protocol.FormatItems(items));
+                Log.Write(Name, "delivery: " + Protocol.FormatItems(items));
+            }
+
+            private voif SendError(string reason){
+                SendLine("ERROR " + reason);
+                Log.Write(Name, "ERROR " + reason);
+
+                // Task 2 
+                // the lock that doesnt mix the connection of client and workers
+
+                public void SendLine(string line){
+                    byte[] data = Encoding.UTF.GetBytes(line + "\n");
+
+                    lock (sendLock){
+                        if (closed){
+                            return;
+                        }
+                        try{
+                            //  send may send only part of the data: send the rest until all is gone
+                            int sent = 0; 
+                            while (sent < data.Length){
+
+                                sent += socket.Send(data, sent, data.Length - sent, SocketFlags.None);
+                            }
+                        }
+
+                        catch (Exceptions ex) when (ex id SocketException || ex is ObjectDisposedException){
+                            // the client is gone or does not read - we close the socket
+                            // its thread in receiver and that thread cleans up
+
+                            closed = true;
+                            try{
+                                socket.Shutdown(SocketShutdown.Both);
+                            }
+
+                            catch (Exception){
+
+                            }
+
+                            socket.Close();
+                        }
+                    }
+                } 
+
+                // Task 4
+                // run once on this client thread when the client is gone
+                private void CleanUp(){
+                    lock (sendLock){
+                        closed = true;
+                    }
+
+                    if (IsProvider){
+                        server.RemoveProvider(this);
+                        shop.SetProvider(null);
+                        Log.Write(Name, "the proviider left, the shop goes on with its stock");
+
+                    }
+
+                    shop.CancelClient(Name);
+                    socket.Close();
+                    Log.Write(Name, "disconnected");
+                }
+            }
         }
 
 
