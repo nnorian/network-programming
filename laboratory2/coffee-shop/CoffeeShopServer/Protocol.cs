@@ -1,5 +1,6 @@
+// task 1
 // making products in dictionaries
-//check for errors and stuff
+// check for errors and format messages
 
 using System.Collections.Generic;
 

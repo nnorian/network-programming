@@ -13,8 +13,7 @@ namespace CoffeeShopServer{
         private readonly IShop shop;
 
         // task 3
-        // which connedction is the provider
-        
+        // which connection is the provider
         private readonly object providerLock = new object();
         private ClientConnection provider = null;
 
@@ -25,12 +24,13 @@ namespace CoffeeShopServer{
 
         }
 
+        // task 1
+        // listening socket and accept loop
         public void Run(){
             Socket listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
             // ANY bonus
             // works with all network cards so another computer can cannect too
-
             listener.Bind(new IPEndPoint(IPAddress.Any, port));
             listener.Listen(100);
             Log.Write("server", "listening on port " + port);
@@ -41,7 +41,7 @@ namespace CoffeeShopServer{
                     Socket socket = listener.Accept();
                     // waits for next client
 
-                    //task2
+                    // task 2
                     // one thread per client then back to accept at once
                     ClientConnection connection = new ClientConnection(socket, this, shop);
                     Thread thread = new Thread(connection.Run);
@@ -57,6 +57,8 @@ namespace CoffeeShopServer{
             }
         }
 
+        // task 3
+        // store the provider connection
         public bool TrySetProvider(ClientConnection connection){
 
             lock (providerLock){
@@ -70,6 +72,8 @@ namespace CoffeeShopServer{
             }
         }
 
+        // task 3
+        // remove the provider when it disconnects
         public void RemoveProvider(ClientConnection connection){
 
             lock (providerLock){

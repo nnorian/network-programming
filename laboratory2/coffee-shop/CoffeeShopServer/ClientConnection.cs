@@ -22,7 +22,7 @@ namespace CoffeeShopServer{
         private readonly Server server;
         private readonly IShop shop;
 
-        // taks 2
+        // task 2
         // the client thread nd the workers send on this socket
         private readonly object sendLock = new object();
         private bool closed = false;
@@ -172,6 +172,8 @@ namespace CoffeeShopServer{
             }
         }
 
+        // task 1
+        // returns menu to client
         private void HandleMenu(string[] parts){
 
             if (parts.Length != 1){
@@ -183,6 +185,8 @@ namespace CoffeeShopServer{
             SendLine("MENU " + Protocol.FormatItems(shop.GetMenu()));
         }
 
+        // task 2
+        // client places an order
         private void HandleOrder(string[] parts){
 
             Dictionary<string, int> items;

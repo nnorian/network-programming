@@ -48,6 +48,8 @@ namespace CoffeeShopClient{
                 return;
             }
 
+            // task 1
+            // connect to the server
             socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
             try {
@@ -76,12 +78,16 @@ namespace CoffeeShopClient{
             heartbeat.IsBackground = true;
             heartbeat.Start();
 
+            // task 3
+            // provider registers and delivers
             if (role == "provider"){
 
                 SendLine("HELLO PROVIDER");
                 Console.WriteLine("Commands: DELIVER coffee=20 croissant=10 | MENU | quit");
             }
 
+            // task 1 and 2
+            // client commands
             else{
 
                 Console.WriteLine("Commands: MENU | ORDER coffee=2 tea=1 | quit");
@@ -142,6 +148,8 @@ namespace CoffeeShopClient{
             return null;
         }
 
+        // task 2
+        // lock so sends dont get mixed between threads
         private static void SendLine(string line){
             byte[] data = Encoding.UTF8.GetBytes(line + "\n");
 
@@ -164,8 +172,8 @@ namespace CoffeeShopClient{
             }
         }
 
-        // message end with \n
-
+        // task 1
+        // receive loop, message ends with \n
         private static void ReceiveLoop(){
             byte[] buffer = new byte[1024];
             List<byte> message = new List<byte>();

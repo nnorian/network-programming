@@ -15,11 +15,13 @@ namespace CoffeeShopServer{
                 return;
             }
 
-            // Until Student B's Shop is ready, test with the fake one.
-            // Then change this line to: IShop shop = new Shop();
-            IShop shop = new FakeShop();
+            // task 1 and 2
+            // the shop with stock and workers
+            IShop shop = new Shop();
 
-            Server server = new Server (port, shop);
+            // task 1
+            // starts listening socket
+            Server server = new Server(port, shop);
 
             try{
 
