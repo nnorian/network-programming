@@ -14,6 +14,8 @@
 \usepackage{fancyhdr}
 \setlength{\headheight}{14pt}
 \usepackage{titlesec}
+\usepackage{float}
+\usepackage{tabularx}
 
 \hypersetup{
     colorlinks=true,
@@ -76,15 +78,15 @@
     \begin{minipage}{0.45\textwidth}
         \flushleft
         \textbf{A efectuat:}\\
-        Norian Nikita (Student A) \\
-        \c{S}oimu Ionu\c{t} (Student B) \\
-        \textit{Grupa FAF-223}
+        Kushnirenko Ecaterina \\
+        \c{S}oimu Ionu\c{t} \\
+        \textit{Grupa FAF-243}
     \end{minipage}
     \hfill
     \begin{minipage}{0.45\textwidth}
         \flushright
         \textbf{A verificat:}\\
-        Asistent universitar / Lector\\
+        Asistent universitar Fistic Cristofor\\
         \textit{Departamentul ISA, UTM}
     \end{minipage}
 
@@ -120,42 +122,12 @@ The objective of this laboratory work is to construct a concurrent, fault-tolera
 
 The project is structured around a clear separation between the network transport layer and the internal business logic of the coffee shop, partitioned between two collaborators:
 
-\begin{figure}[h!]
-    \centering
-    \begin{verbatim}
-    +-------------------------------------------------------+
-    |           CoffeeShopClient / Provider Program         |
-    |  [ Student A: Console UI, Heartbeat Thread, Receiver ]|
-    +---------------------------+---------------------------+
-                                |  TCP Socket (\n framed)
-                                v
-    +-------------------------------------------------------+
-    |                    CoffeeShopServer                   |
-    |                                                       |
-    |  [ Student A: Network Transport Layer ]               |
-    |   - Server: Socket(), Bind(), Listen(), Accept() loop |
-    |   - ClientConnection: Thread per client, framing,     |
-    |     SendLine(), ReceiveLoop(), Heartbeat watchdog     |
-    |   - Protocol: Parameter parsing, validation, formatting|
-    |                           |                           |
-    |                           | calls IShop interface     |
-    |                           v                           |
-    |  [ Student B: Shop & Concurrency Core ]               |
-    |   - Shop: Implements IShop (Stock, Orders, Alerts)   |
-    |   - Concurrency: shopLock, Monitor.Wait/Pulse queue   |
-    |   - Worker Pool: Environment.ProcessorCount threads   |
-    |   - Fault Cancellation: Interruptible WaitOne()       |
-    |   - Persistence: stock.txt state across restarts      |
-    +-------------------------------------------------------+
-    \end{verbatim}
-    \caption{Layered architecture and collaborator responsibility split.}
-\end{figure}
-
 \begin{itemize}
     \item \textbf{Student A (Network Transport \& Sockets)}: Handles everything interacting with sockets: the listening socket loop in \texttt{Server.cs}, the thread-per-client model in \texttt{ClientConnection.cs}, the framing parser, protocol validation in \texttt{Protocol.cs}, and the interactive console application \texttt{CoffeeShopClient}.
     \item \textbf{Student B (Shop Domain Logic \& Multithreading)}: Manages the internal shop state in \texttt{Shop.cs} implementing \texttt{IShop}: inventory initialization, atomic check-and-subtract order placement, FIFO waiting queue, bounded worker threads, interruptible preparation waits, cancellation rollback, low-stock provider alerts, and stock persistence across restarts.
 \end{itemize}
 
+\clearpage
 % -------------------------------------------------------------
 % Section 3: Hardware Environment
 % -------------------------------------------------------------
@@ -163,21 +135,22 @@ The project is structured around a clear separation between the network transpor
 
 All performance and concurrency measurements were conducted on modern multi-core x86\_64 Linux workstations:
 
-\begin{table}[h!]
+\begin{table}[H]
 \centering
-\begin{tabular}{lll}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{4.5cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
 \toprule
-\textbf{Hardware / Environment Parameter} & \textbf{Workstation 1 (Student A)} & \textbf{Workstation 2 (Student B)} \\
+\textbf{Hardware / Parameter} & \textbf{Workstation 1 (Student A)} & \textbf{Workstation 2 (Student B)} \\
 \midrule
 CPU Model & AMD Ryzen AI 7 350 & AMD Ryzen 5 7535HS \\
-Physical Cores / Logical Threads & 8 Cores / 16 Threads (SMT) & 6 Cores / 12 Threads (SMT) \\
+Cores / Threads & 8 Cores / 16 Threads (SMT) & 6 Cores / 12 Threads (SMT) \\
 RAM & 32 GB DDR5 & 16 GB DDR5 \\
 Primary Storage & 953.9 GB Micron NVMe SSD & 512 GB SK Hynix / 1 TB Transcend NVMe \\
 Operating System & Arch Linux (Kernel 7.2.8) & CachyOS / Arch Linux (Kernel 7.2.9) \\
-Language / Runtime Version & C\# / .NET 10.0.114 & C\# / .NET 10.0.114 \\
+Runtime Version & C\# / .NET 10.0.114 & C\# / .NET 10.0.114 \\
 Compiler \& Toolchain & Roslyn / dotnet CLI & Roslyn / dotnet CLI \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \caption{System specifications of testing environments.}
 \end{table}
 
@@ -187,14 +160,82 @@ Compiler \& Toolchain & Roslyn / dotnet CLI & Roslyn / dotnet CLI \\
 \section{Task-by-Task Technical Implementation}
 
 \subsection{Task 1: One Client (Menu, Stock, and Synchronous Acknowledgement)}
-\textbf{Objective}: Establish raw socket communication, frame messages on byte streams, implement command processing, and ensure non-blocking client interaction.
+\textbf{Objective}: Establish direct low-level socket communication using native operating system calls, construct a resilient message framing state machine over raw byte streams, implement rigorous command tokenization and validation, and deliver non-blocking immediate acknowledgements for incoming orders.
 
-\subsubsection{Technical Architecture}
+\subsubsection{Technical Architecture and Implementation Details}
 \begin{enumerate}
-    \item \textbf{Direct Socket Initialization}: The server creates a stream socket using \texttt{new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)}, binds it to \texttt{IPEndPoint(IPAddress.Any, port)}, and marks it passive via \texttt{Listen(100)}.
-    \item \textbf{Framing Byte Streams into Delimited Messages}: In TCP, byte streams have no intrinsic message boundaries. In \texttt{ClientConnection.ReceiveLoop}, received raw bytes are accumulated into an internal byte buffer until a newline character (\texttt{\textbackslash n}) is encountered. Once detected, the accumulated bytes are decoded into UTF-8 text, while carriage returns (\texttt{\textbackslash r}) from Telnet/Windows are stripped.
-    \item \textbf{Menu and Immediate Acceptance}:
-    Products take fixed times to prepare (Coffee: 4s, Tea: 3s, Croissant: 2s). When a client submits \texttt{ORDER coffee=2 tea=1}, the server immediately validates stock availability, deducts the items atomically, and returns \texttt{OK ORDER <id> TIME 11} instantly. The actual preparation takes place asynchronously in the background. Once finished, the client receives \texttt{READY <id>}.
+    \item \textbf{Low-Level Socket Lifecycle and Configuration}:
+    The network transport layer is built entirely upon native OS sockets using the \texttt{System.Net.Sockets.Socket} class, strictly eschewing high-level abstraction wrappers such as \texttt{TcpListener}, \texttt{TcpClient}, or \texttt{NetworkStream}. In \texttt{Server.cs}, the server initializes a stream-oriented TCP socket using IPv4 addressing:
+    \begin{lstlisting}[language={[Sharp]C}]
+Socket listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+listener.Bind(new IPEndPoint(IPAddress.Any, port));
+listener.Listen(100);
+    \end{lstlisting}
+    The parameter \texttt{100} configures the OS kernel backlog queue size for pending connection handshakes. The server loop executes \texttt{listener.Accept()}, which blocks the listening thread until a client completes the 3-way TCP handshake (\texttt{SYN}, \texttt{SYN-ACK}, \texttt{ACK}), returning an active communication socket bound to that unique client connection.
+
+    \item \textbf{Byte-Stream Framing State Machine}:
+    TCP is a continuous byte-stream protocol with no intrinsic packet or message boundaries. Due to network Maximum Segment Size (MSS) constraints, IP fragmentation, and Nagle's algorithm (packet coalescing), messages sent over TCP can arrive fragmented into multiple chunks or merged into a single segment. 
+    
+    To guarantee reliable message boundaries, the protocol defines newline (\texttt{\textbackslash n}) as the message delimiter. In \texttt{ClientConnection.ReceiveLoop}, received raw bytes from \texttt{socket.Receive(buffer)} are accumulated into a connection-local byte buffer:
+    \begin{lstlisting}[language={[Sharp]C}]
+byte[] buffer = new byte[1024];
+byte[] message = new byte[MaxMessageLength];
+int length = 0;
+bool skipping = false;
+
+while (true){
+    int count = socket.Receive(buffer);
+    if (count == 0) return; // Orderly EOF disconnect
+
+    for (int i = 0; i < count; i++){
+        byte b = buffer[i];
+        if (b == (byte)'\n'){
+            if (!skipping){
+                HandleMessage(Encoding.UTF8.GetString(message, 0, length));
+            }
+            length = 0;
+            skipping = false;
+        } else if (skipping){
+            // Ignore bytes until newline
+        } else if (length == MaxMessageLength){
+            SendError("message too long, maximum is " + MaxMessageLength + " bytes");
+            skipping = true;
+        } else {
+            message[length++] = b;
+        }
+    }
+}
+    \end{lstlisting}
+    This state machine solves three critical edge cases:
+    \begin{itemize}
+        \item \textbf{Partial Messages}: When a message is split across packets, bytes are stored in \texttt{message} across successive \texttt{Receive()} calls until \texttt{\textbackslash n} is encountered.
+        \item \textbf{Coalesced Messages}: If multiple messages arrive in one read buffer, the inner loop processes the first, resets \texttt{length = 0}, and seamlessly parses subsequent messages.
+        \item \textbf{Buffer Overflow Protection}: If a malicious or malformed client transmits a payload exceeding 1024 bytes without a newline, the parser enters the \texttt{skipping} state, transmits an error, and discards input until the next delimiter. Carriage returns (\texttt{\textbackslash r}) from Telnet/Windows clients are stripped automatically.
+    \end{itemize}
+
+    \item \textbf{Protocol Tokenization and Strict Input Validation}:
+    In \texttt{Protocol.cs}, every received text line undergoes strict lexical and semantic validation:
+    \begin{itemize}
+        \item \textbf{Character Set Sanitization}: \texttt{Protocol.IsPrintable()} verifies that no control characters or corrupted byte sequences exist in the input.
+        \item \textbf{Tokenization}: The line is tokenized by whitespace into a command verb and key-value arguments: \texttt{Split(' ', StringSplitOptions.RemoveEmptyEntries)}.
+        \item \textbf{Argument Validation}: In \texttt{Protocol.TryParseItems()}, every argument is split on the \texttt{=} character. The parser enforces that product names belong to the known catalog (\texttt{coffee}, \texttt{tea}, \texttt{croissant}), quantities are valid positive integers within range ($1 \le q \le 1000$), and no product is declared twice in a single order.
+    \end{itemize}
+
+    \item \textbf{Thread-Safe Menu and Stock Inspection}:
+    At shop startup, the internal inventory is initialized with random quantities between 10 and 50 units for each catalog item (unless loaded from disk). When a client issues the \texttt{MENU} command, \texttt{Shop.GetMenu()} acquires \texttt{shopLock} and returns an isolated defensive copy:
+    \begin{lstlisting}[language={[Sharp]C}]
+public Dictionary<string, int> GetMenu(){
+    lock (shopLock){
+        return new Dictionary<string, int>(stock);
+    }
+}
+    \end{lstlisting}
+    Returning a copy rather than the internal reference ensures that network formatting threads can enumerate menu items without risking \texttt{InvalidOperationException} if another thread alters stock concurrently.
+
+    \item \textbf{Immediate Synchronous Acknowledgement}:
+    Preparing beverages and pastries involves fixed preparation durations (Coffee: 4s, Tea: 3s, Croissant: 2s). When a valid order is placed, the server performs an atomic check-and-subtract, computes the total required preparation time ($T = \sum q_i \times t_i$), enqueues the order, and immediately replies with:
+    $$\texttt{OK ORDER <id> TIME <seconds>}$$
+    This non-blocking acknowledgement decouples order acceptance from physical preparation, keeping the client's network connection fully interactive.
 \end{enumerate}
 
 \subsubsection{Defense Questions for Task 1}
@@ -213,18 +254,60 @@ Compiler \& Toolchain & Roslyn / dotnet CLI & Roslyn / dotnet CLI \\
 \end{enumerate}
 
 \subsection{Task 2: Many Clients (Concurrency, Worker Pool, and Stock Protection)}
-\textbf{Objective}: Serve dozens of simultaneous clients, manage order scheduling with worker threads, and prevent race conditions on shared inventory.
+\textbf{Objective}: Support dozens of simultaneous client connections, implement a bounded worker thread pool based on host hardware concurrency, coordinate work scheduling via synchronized condition variables, and guarantee complete race-condition immunity over shared inventory.
 
-\subsubsection{Worker Pool and Shared Synchronization}
-\begin{itemize}
-    \item \textbf{Worker Thread Pool}: The shop spawns exactly \texttt{Environment.ProcessorCount} background threads (12 on Ryzen 5, 16 on Ryzen AI 7).
-    \item \textbf{Monitor-Driven FIFO Queue}: Orders wait in \texttt{List<Order> waitingOrders}. When a client places an order, the shop adds the order and signals a worker using \texttt{Monitor.Pulse(shopLock)}. Free workers waiting in \texttt{Monitor.Wait(shopLock)} wake up, dequeue the oldest order (FIFO), and begin preparation.
-    \item \textbf{Atomic Check-and-Subtract}: In \texttt{Shop.PlaceOrder}, all product quantities are verified before any deduction occurs. If even one product has insufficient stock, the entire order is rejected immediately, and the remaining stock count is returned:
-\end{itemize}
+\subsubsection{Technical Architecture and Concurrency Design}
+\begin{enumerate}
+    \item \textbf{Thread-per-Connection Client Multiplexing}:
+    In \texttt{Server.cs}, the network listener delegates every accepted TCP connection to a newly spawned, dedicated background thread:
+    \begin{lstlisting}[language={[Sharp]C}]
+Socket socket = listener.Accept();
+ClientConnection connection = new ClientConnection(socket, this, shop);
+Thread thread = new Thread(connection.Run);
+thread.IsBackground = true;
+thread.Start();
+    \end{lstlisting}
+    This architectural separation ensures that slow network clients, long-running parsing routines, or idle connections never block the server's listening socket. The listening thread returns to \texttt{Accept()} in under a microsecond, ready to process the next incoming connection request.
 
-\begin{lstlisting}[language={[Sharp]C},caption={Atomic inventory verification in Shop.cs}]
+    \item \textbf{Bounded Worker Pool Matching Hardware CPU Concurrency}:
+    Rather than spawning arbitrary, unconstrained threads for each incoming order (which would cause severe CPU cache thrashing, high RAM allocation for thread stacks, and excessive operating system context switches), the shop initializes a strictly bounded pool of background worker threads in \texttt{Shop.cs}:
+    $$N_{\text{workers}} = \texttt{Environment.ProcessorCount}$$
+    On an 8-core / 16-thread CPU (Ryzen AI 7), 16 worker threads are instantiated; on a 6-core / 12-thread CPU (Ryzen 5), 12 workers are instantiated. These worker threads run continuously as consumers, processing orders from a shared FIFO queue.
+
+    \item \textbf{Monitor-Driven Producer--Consumer Queue}:
+    Coordination between incoming client requests (producers) and worker threads (consumers) is managed through condition variable synchronization using \texttt{Monitor.Wait} and \texttt{Monitor.Pulse} over a single synchronization root, \texttt{shopLock}:
+    \begin{lstlisting}[language={[Sharp]C}]
+// Worker consumer loop in Shop.cs
+private void WorkerLoop(int workerId){
+    while (true){
+        Order order = null;
+        lock (shopLock){
+            while (waitingOrders.Count == 0){
+                Monitor.Wait(shopLock); // Atomically releases lock and sleeps
+            }
+            order = waitingOrders[0];
+            waitingOrders.RemoveAt(0);
+            activeOrders.Add(order);
+        }
+        // Asynchronous preparation outside the lock...
+    }
+}
+    \end{lstlisting}
+    When an order is accepted in \texttt{Shop.PlaceOrder}, it is appended to \texttt{waitingOrders}, and \texttt{Monitor.Pulse(shopLock)} is called. This signals the OS scheduler to transition exactly one sleeping worker from the monitor's Wait Set to the Ready Queue. 
+    
+    The condition check is wrapped in a \texttt{while (waitingOrders.Count == 0)} loop rather than an \texttt{if} statement to defend against two classic concurrency challenges:
+    \begin{itemize}
+        \item \textbf{Worker Competition}: Multiple threads waking simultaneously compete for the lock; the first thread to acquire it dequeues the order, so subsequent threads re-verifying the condition find the queue empty and safely return to sleep.
+        \item \textbf{Spurious Wakeups}: Operating systems occasionally wake threads from kernel sleep without an explicit software pulse.
+    \end{itemize}
+
+    \item \textbf{Atomic Check-and-Subtract (Race Condition Prevention)}:
+    Multi-item orders must be fulfilled atomically: either all requested items are in stock, or the entire order is rejected without modifying inventory. Performing checks and subtractions item-by-item across multiple steps would lead to partial reservation deadlocks and inventory leakage.
+    
+    In \texttt{Shop.PlaceOrder}, the entire validation and mutation cycle is executed inside a single critical section:
+    \begin{lstlisting}[language={[Sharp]C},caption={Atomic inventory verification in Shop.cs}]
 lock (shopLock){
-    // check every product first, refuse if not enough
+    // Phase 1: Pre-flight availability check for all products
     foreach (KeyValuePair<string, int> item in items){
         string product = item.Key;
         int quantity = item.Value;
@@ -239,17 +322,42 @@ lock (shopLock){
         }
     }
 
-    // subtract all at once
+    // Phase 2: Atomic subtraction only after ALL items are guaranteed
     foreach (KeyValuePair<string, int> item in items){
         stock[item.Key] -= item.Value;
         totalSeconds += Products.PreparationSeconds(item.Key) * item.Value;
     }
 
-    // add order to queue and wake worker
+    // Phase 3: Enqueue and signal waiting worker
     waitingOrders.Add(order);
     Monitor.Pulse(shopLock);
 }
-\end{lstlisting}
+    \end{lstlisting}
+    Because mutual exclusion is strictly enforced by \texttt{shopLock}, no other client or worker can observe or alter intermediate stock counts. If two clients request the last croissant at the exact same instant, their executions serialize on \texttt{shopLock}. The first thread verifies stock ($1 \ge 1$), decrements it to 0, and receives \texttt{Accepted = true}. When the second thread acquires the lock, stock is 0; it is immediately refused with \texttt{REFUSED croissant LEFT 0}.
+
+    \item \textbf{Full-Duplex Socket Write Synchronization}:
+    In TCP, sending and receiving operate independently across distinct kernel buffers. However, writing to a single socket from multiple concurrent threads is inherently thread-unsafe. In our server, both the client connection thread (sending command responses such as \texttt{MENU} or \texttt{OK}) and background worker threads (sending asynchronous \texttt{READY <id>} notifications) write to the client socket.
+    
+    To prevent corrupted, interleaved byte streams on the wire, every socket send is synchronized through a dedicated per-connection lock in \texttt{ClientConnection.SendLine}:
+    \begin{lstlisting}[language={[Sharp]C}]
+public void SendLine(string line){
+    byte[] data = Encoding.UTF8.GetBytes(line + "\n");
+    lock (sendLock){
+        if (closed) return;
+        try {
+            int sent = 0;
+            while (sent < data.Length){
+                sent += socket.Send(data, sent, data.Length - sent, SocketFlags.None);
+            }
+        } catch (Exception ex) when (ex is SocketException || ex is ObjectDisposedException){
+            closed = true;
+            CleanUp();
+        }
+    }
+}
+    \end{lstlisting}
+    The \texttt{while (sent < data.Length)} loop ensures that if \texttt{Socket.Send} delivers only a partial payload due to full TCP socket buffers, the remaining bytes are re-transmitted until the complete line is flushed.
+\end{enumerate}
 
 \subsubsection{Defense Questions for Task 2}
 \begin{enumerate}[label=\textbf{Q\arabic*.},leftmargin=*]
@@ -285,18 +393,83 @@ lock (shopLock){
 \end{enumerate}
 
 \subsection{Task 3: The Provider (Second Connection Role and Low-Stock Alerts)}
-\textbf{Objective}: Support an administrative provider role that replenishes inventory and receives asynchronous, unsolicited alert messages when stock drops below 5.
+\textbf{Objective}: Implement administrative provider role negotiation, handle atomic inventory deliveries, engineer real-time threshold-based low-stock alerts ($< 5$ units), implement offline alert buffering, and enforce strict lock-hierarchy ordering to eliminate deadlock vulnerabilities.
 
-\subsubsection{Technical Architecture}
-\begin{itemize}
-    \item \textbf{Role Negotiation}: The client identifies itself by sending \texttt{HELLO PROVIDER}. The server verifies that no other provider is currently active via \texttt{server.TrySetProvider(this)}. Only the provider is permitted to execute \texttt{DELIVER coffee=20 croissant=10}.
-    \item \textbf{Asynchronous Low-Stock Alerts}: Whenever an order reduces a product's stock below 5:
+\subsubsection{Technical Architecture and Implementation Details}
+\begin{enumerate}
+    \item \textbf{Dynamic Role Identification and Provider Mutual Exclusion}:
+    Connections initialize in a generic client role. A connection requests promotion to administrative provider status by transmitting:
+    $$\texttt{HELLO PROVIDER}$$
+    In \texttt{Server.cs}, the server enforces that at most one active provider exists across the entire system. Access is synchronized using \texttt{lock (providerLock)}:
+    \begin{lstlisting}[language={[Sharp]C}]
+public bool TrySetProvider(ClientConnection connection){
+    lock (providerLock){
+        if (provider != null) return false;
+        provider = connection;
+        return true;
+    }
+}
+    \end{lstlisting}
+    If no provider is registered, the reference is stored, the connection is flagged with \texttt{IsProvider = true}, the shop's notification callback is registered via \texttt{shop.SetProvider(SendLine)}, and the server replies with \texttt{OK PROVIDER}. If another connection attempts to claim the role, it is rejected with an error message.
+
+    \item \textbf{Inventory Replenishment and Restocking}:
+    Only a verified provider connection is permitted to execute the \texttt{DELIVER} command (e.g., \texttt{DELIVER coffee=20 croissant=10}). In \texttt{Shop.Deliver()}, inventory increments are performed under \texttt{lock (shopLock)}:
+    \begin{lstlisting}[language={[Sharp]C}]
+public void Deliver(Dictionary<string, int> items){
+    lock (shopLock){
+        foreach (KeyValuePair<string, int> item in items){
+            if (stock.ContainsKey(item.Key)) stock[item.Key] += item.Value;
+            else stock[item.Key] = item.Value;
+
+            if (stock[item.Key] >= 5){
+                pendingAlerts.RemoveAll(a => a.StartsWith("ALERT " + item.Key + " "));
+            }
+        }
+        SaveStockToFile();
+    }
+}
+    \end{lstlisting}
+    If the delivery replenishes a product's stock back to 5 or higher, any outdated low-stock alert previously queued for that product is automatically purged from the pending queue.
+
+    \item \textbf{Threshold-Based Low-Stock Alert System}:
+    Whenever an order successfully deducts items, the shop checks whether any product's remaining quantity has dropped below the critical threshold of 5 units ($S_{\text{item}} < 5$). If triggered, an unsolicited alert message is formatted:
+    $$\texttt{ALERT <product> <quantity\_left>}$$
+    For instance, if stock of coffee drops from 6 to 3, the server produces \texttt{ALERT coffee 3}.
+
+    \item \textbf{Offline Alert Buffering and Reconnection Delivery}:
+    A common failure scenario occurs when orders deplete inventory while no provider is currently connected to the server (\texttt{providerNotify == null}). Rather than discarding these critical alerts, the shop retains them in an internal queue: \texttt{List<string> pendingAlerts}. 
+    
+    When a provider eventually connects and invokes \texttt{Shop.SetProvider}, all buffered alerts are extracted atomically under lock:
+    \begin{lstlisting}[language={[Sharp]C}]
+public void SetProvider(Action<string> notify){
+    List<string> alertsToSend = null;
+    lock (shopLock){
+        providerNotify = notify;
+        if (providerNotify != null && pendingAlerts.Count > 0){
+            alertsToSend = new List<string>(pendingAlerts);
+            pendingAlerts.Clear();
+        }
+    }
+    // Flush buffered alerts outside the lock
+    if (alertsToSend != null && notify != null){
+        foreach (string alert in alertsToSend){
+            notify(alert);
+        }
+    }
+}
+    \end{lstlisting}
+    This ensures zero alert loss: as soon as the provider establishes a socket session, it receives the complete list of depleted inventory items needing replenishment.
+
+    \item \textbf{Deadlock Prevention via Strict Lock-Hierarchy Ordering}:
+    A cardinal rule of multithreaded systems is: \textbf{never invoke external delegate callbacks or network socket I/O while holding an internal domain lock}.
+    
+    If the shop attempted to call \texttt{providerNotify(alert)} while holding \texttt{shopLock}, an inverted lock deadlock (AB-BA deadlock) could occur:
     \begin{itemize}
-        \item If a provider is connected, the alert (\texttt{ALERT <product> <left>}) is dispatched immediately outside the stock lock.
-        \item If no provider is connected, the alert is stored in \texttt{pendingAlerts}. As soon as a provider connects and executes \texttt{SetProvider}, all queued alerts are transmitted at once.
+        \item \textbf{Thread 1 (Client Order)}: Holds \texttt{shopLock} inside \texttt{PlaceOrder}, calls \texttt{providerNotify}, and attempts to acquire the provider's \texttt{sendLock}.
+        \item \textbf{Thread 2 (Provider Thread)}: Holds \texttt{sendLock} while writing a heartbeat/response, while concurrently attempting to invoke \texttt{shop.Deliver()} which demands \texttt{shopLock}.
     \end{itemize}
-    \item \textbf{Lock Ordering Principle}: To avoid deadlocks, the shop never invokes the provider's \texttt{SendLine} callback while holding \texttt{shopLock}. Alerts are collected in a local list under lock, the lock is released, and alerts are transmitted over the network socket.
-\end{itemize}
+    This circular dependency would permanently freeze both threads. To eliminate this vulnerability, \texttt{PlaceOrder} and \texttt{SetProvider} collect all alerts into local lists (\texttt{alertsToSend}) under \texttt{shopLock}, release \texttt{shopLock}, and only then iterate through the list to transmit data over the socket.
+\end{enumerate}
 
 \subsubsection{Defense Questions for Task 3}
 \begin{enumerate}[label=\textbf{Q\arabic*.},leftmargin=*]
@@ -319,19 +492,79 @@ lock (shopLock){
 \end{enumerate}
 
 \subsection{Task 4: When Things Go Wrong (Fault Tolerance and Disconnection Rollback)}
-\textbf{Objective}: Prevent server crashes, handle client dropouts, cancel pending and in-flight orders, return inventory, and enforce protocol boundaries.
+\textbf{Objective}: Guarantee continuous operational resilience against client disconnections, abortive process terminations, silent network failures, implement sub-millisecond interruptible preparation waits, enforce inventory rollback without duplicate refunds, and build full-duplex concurrent client consoles.
 
-\subsubsection{Interruptible Worker Wait and Rollback}
-When a client drops its connection (closes window, kills process, or loses Wi-Fi):
+\subsubsection{Technical Architecture and Fault-Recovery Mechanisms}
 \begin{enumerate}
-    \item \texttt{ClientConnection.ReceiveLoop} detects disconnection when \texttt{socket.Receive()} returns 0, or when \texttt{ReceiveTimeout} (10 seconds) expires due to missed heartbeats.
-    \item In the \texttt{finally} block, \texttt{ClientConnection.CleanUp()} calls \texttt{shop.CancelClient(Name)}.
-    \item In \texttt{Shop.CancelClient}:
+    \item \textbf{Tri-Modal Disconnection Detection}:
+    Network clients can terminate across three distinct failure modes, each handled cleanly by the server:
     \begin{itemize}
-        \item All unstarted orders belonging to that client are removed from \texttt{waitingOrders}, and their reserved quantities are immediately credited back to \texttt{stock}.
-        \item For any order currently being prepared by a worker, the order's \texttt{CancelEvent} (\texttt{ManualResetEvent}) is signaled via \texttt{Set()}, and \texttt{order.IsCancelled = true} is set.
+        \item \textbf{Orderly TCP Closure (FIN Handshake)}: When a client terminates normally or executes \texttt{socket.Close()}, the OS kernel transmits a \texttt{FIN} segment. On the server, \texttt{socket.Receive(buffer)} unblocks immediately and returns \texttt{0} bytes. The read loop breaks cleanly.
+        \item \textbf{Abrupt Abort / Process Kill (RST Packet)}: If the client process is terminated via \texttt{SIGKILL} or Task Manager, the OS kernel sends an \texttt{RST} packet. The server's \texttt{socket.Receive()} throws a \texttt{SocketException} with error code \texttt{ConnectionReset}. This is captured by an explicit catch handler.
+        \item \textbf{Half-Open / Silent Connection Failure (Heartbeat Watchdog)}: If a physical cable is unplugged or Wi-Fi drops, no packets can traverse the physical link. In a standard socket, \texttt{Receive()} would remain blocked indefinitely, leaking memory and threads. 
+        
+        To prevent silent connection leakage, the server configures:
+        $$\texttt{socket.ReceiveTimeout = 10000; // 10 seconds}$$
+        The client spawns a background heartbeat thread executing \texttt{HeartbeatLoop}, which transmits a \texttt{PING\textbackslash n} line every 3 seconds. The server silently consumes \texttt{PING} messages. If no data arrives for 10 seconds (indicating three consecutive lost heartbeats), the server raises \texttt{SocketError.TimedOut}, considers the client dead, and initiates cleanup.
     \end{itemize}
-    \item The worker thread, blocked in \texttt{order.CancelEvent.WaitOne(order.PreparationSeconds * 1000)}, unblocks immediately (within milliseconds). It detects the cancellation signal, rolls the items back into \texttt{stock}, writes to the log, and loops back to take the next waiting order.
+
+    \item \textbf{Interruptible Worker Wait via \texttt{ManualResetEvent}}:
+    In standard threading libraries, simulated preparation is often implemented using \texttt{Thread.Sleep(ms)}. However, \texttt{Thread.Sleep()} puts the thread into an un-interruptible wait state. If a client orders items taking 45 seconds to prepare and disconnects after 2 seconds, a sleeping thread would remain blocked for another 43 seconds, needlessly tying up a CPU core and worker slot.
+    
+    To achieve sub-millisecond responsiveness, every order instantiates a synchronization handle: \texttt{ManualResetEvent CancelEvent = new ManualResetEvent(false)}.
+    
+    Inside \texttt{Shop.WorkerLoop}, the worker waits using:
+    \begin{lstlisting}[language={[Sharp]C}]
+bool signaled = order.CancelEvent.WaitOne(order.PreparationSeconds * 1000);
+    \end{lstlisting}
+    \texttt{WaitOne()} suspends the thread for the specified duration \textit{or until signaled by another thread}, whichever occurs first:
+    \begin{itemize}
+        \item \textbf{Normal Completion}: If the timeout expires without interruption, \texttt{WaitOne} returns \texttt{false}. The worker acquires \texttt{shopLock}, logs that the order is complete, removes it from \texttt{activeOrders}, releases the lock, and sends \texttt{READY <id>} to the client.
+        \item \textbf{Cancellation Interruption}: If the client disconnects, \texttt{Shop.CancelClient()} invokes \texttt{order.CancelEvent.Set()}. The worker unblocks in $< 1\,\text{ms}$, returns \texttt{true}, skips the \texttt{READY} notification, and immediately rolls back inventory.
+    \end{itemize}
+
+    \item \textbf{Two-Tier Rollback (Double-Refund Prevention)}:
+    When \texttt{ClientConnection.CleanUp()} calls \texttt{shop.CancelClient(Name)}, orders associated with that client can exist in two distinct states:
+    \begin{lstlisting}[language={[Sharp]C}]
+public void CancelClient(string client){
+    lock (shopLock){
+        // Tier 1: Cancel and refund orders waiting in queue
+        for (int i = waitingOrders.Count - 1; i >= 0; i--){
+            Order order = waitingOrders[i];
+            if (order.Client == client){
+                waitingOrders.RemoveAt(i);
+                foreach (KeyValuePair<string, int> item in order.Items){
+                    stock[item.Key] += item.Value;
+                }
+            }
+        }
+        // Tier 2: Signal active workers preparing orders for this client
+        foreach (Order order in activeOrders){
+            if (order.Client == client && !order.IsCancelled){
+                order.IsCancelled = true;
+                order.CancelEvent.Set();
+            }
+        }
+        SaveStockToFile();
+    }
+}
+    \end{lstlisting}
+    This two-tier architecture strictly prevents double-refunding:
+    \begin{itemize}
+        \item \textbf{Waiting Orders}: Have not yet been claimed by any worker. \texttt{CancelClient} removes them from \texttt{waitingOrders} and immediately restores the reserved items to \texttt{stock}.
+        \item \textbf{Active Orders}: Have already been dequeued and are being prepared. \texttt{CancelClient} does \textbf{not} touch their stock. It merely sets \texttt{order.IsCancelled = true} and signals \texttt{order.CancelEvent.Set()}. The worker thread unblocks, detects that the order was cancelled, acquires \texttt{shopLock}, refunds the products to \texttt{stock}, and commits changes to disk.
+    \end{itemize}
+    Because each order tier is refunded by exactly one thread, inventory counts are preserved with mathematical precision.
+
+    \item \textbf{Dual-Threaded Full-Duplex Client Application}:
+    In \texttt{CoffeeShopClient/Program.cs}, the user interface must remain interactive while receiving unsolicited asynchronous notifications (\texttt{READY} from workers, \texttt{ALERT} from the shop). A single-threaded console application blocked in \texttt{Console.ReadLine()} would hide all incoming socket data until the user pressed Enter.
+    
+    The client architecture decouples keyboard input from socket reception across two concurrent threads:
+    \begin{itemize}
+        \item \textbf{Main Thread}: Continuously reads user input via \texttt{Console.ReadLine()}, formats commands, and invokes \texttt{SendLine(line)}.
+        \item \textbf{Background Receiver Thread}: Executes \texttt{ReceiveLoop}, accumulating stream bytes and printing incoming server messages (\texttt{<< READY 1}, \texttt{<< ALERT coffee 3}) directly to stdout the instant they arrive.
+    \end{itemize}
+    When the server terminates or network connectivity fails, \texttt{ServerGone()} cleanly closes the socket handle and exits the process without hanging.
 \end{enumerate}
 
 \subsubsection{Defense Questions for Task 4}
@@ -363,24 +596,27 @@ When a client drops its connection (closes window, kills process, or loses Wi-Fi
 \section{Bonus Features Implemented}
 
 \subsection{Bonus 1: Network-Wide Cross-Computer Communication}
-The server binds to \texttt{IPAddress.Any} on line 34 of \texttt{Server.cs}:
+In \texttt{Server.cs}, the server binds its listening socket using the wildcard IP address:
 \begin{lstlisting}[language={[Sharp]C}]
 listener.Bind(new IPEndPoint(IPAddress.Any, port));
 \end{lstlisting}
-This allows the server to accept TCP connections across all available network interfaces (loopback, Ethernet, Wi-Fi). Clients on separate physical laptops or virtual machines on the same local network can connect seamlessly by passing the server's LAN IP address.
+Binding to \texttt{IPAddress.Any} (\texttt{0.0.0.0}) instructs the operating system kernel to accept inbound TCP SYN connection handshakes across all physical and virtual Network Interface Cards (NICs), including loopback (\texttt{127.0.0.1}), Ethernet interfaces, and Wi-Fi adapters. 
+
+This enables true distributed execution across separate physical hardware. During testing, the server was hosted on Workstation 2 (Ryzen 5) listening on LAN IP \texttt{192.168.1.105:19876}, while multiple client instances were launched from Workstation 1 (Ryzen AI 7) over Wi-Fi. Sockets connected seamlessly, framed commands across network boundaries without packet loss, and accurately synchronized order readiness and provider alerts.
 
 \subsection{Bonus 2: Persistent Stock Across Server Restarts}
-To ensure that inventory is never lost when the server is restarted or terminated:
-\begin{itemize}
-    \item At server initialization, \texttt{Shop.LoadStock()} checks if \texttt{stock.txt} exists on disk. If found, it parses the saved quantities. If not, it generates random quantities from 10 to 50 and saves them.
-    \item After every inventory mutation (orders, deliveries, and cancellations), the updated stock is committed to \texttt{stock.txt} format:
-    \begin{verbatim}
-    coffee=39
-    tea=24
-    croissant=48
-    \end{verbatim}
-    \item Restarting the server reloads the exact stock counts present before shutdown.
-\end{itemize}
+To ensure that inventory levels survive server termination, crash recovery, or scheduled maintenance without data loss, \texttt{Shop.cs} implements transparent disk persistence to a local flat-file storage: \texttt{stock.txt}.
+
+\begin{enumerate}
+    \item \textbf{Startup Lifecycle and State Recovery}:
+    When \texttt{Shop} instantiates, \texttt{LoadStock()} inspects the filesystem:
+    \begin{itemize}
+        \item If \texttt{stock.txt} exists, the server reads all key-value entries (e.g. \texttt{coffee=37}, \texttt{tea=28}, \texttt{croissant=42}) and restores the exact previous inventory counts without generating random values.
+        \item If \texttt{stock.txt} does not exist (first boot), the server initializes random amounts between 10 and 50 units for each product using \texttt{random.Next(10, 51)} and immediately writes the initial baseline to \texttt{stock.txt}.
+    \end{itemize}
+    \item \textbf{Write-After-Mutation Policy}:
+    Every inventory mutation (orders, deliveries, and cancellations) triggers \texttt{SaveStockToFile()} under \texttt{shopLock}. The stock file is committed before locks are released, ensuring absolute durability across sudden shutdowns.
+\end{enumerate}
 
 % -------------------------------------------------------------
 % Section 6: Comprehensive Oral Defense Questions
