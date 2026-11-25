@@ -1,0 +1,599 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\setlength{\headheight}{14pt}
+\usepackage{titlesec}
+\usepackage{float}
+\usepackage{tabularx}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    urlcolor=blue!70!black,
+    citecolor=blue!70!black
+}
+
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codebg}{rgb}{0.96,0.96,0.96}
+\definecolor{keywordcolor}{rgb}{0.13,0.13,0.7}
+\definecolor{stringcolor}{rgb}{0.7,0.15,0.15}
+\definecolor{commentcolor}{rgb}{0.25,0.5,0.35}
+
+\lstset{
+    backgroundcolor=\color{codebg},
+    commentstyle=\color{commentcolor}\itshape,
+    keywordstyle=\color{keywordcolor}\bfseries,
+    stringstyle=\color{stringcolor},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=7pt,
+    numberstyle=\tiny\color{codegray},
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4,
+    frame=single,
+    rulecolor=\color{black!20}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textit{Laboratory Work 3: A Local Network Chat}}
+\lhead{\textit{Network Programming}}
+\cfoot{\thepage}
+
+\begin{document}
+
+% -------------------------------------------------------------
+% Title Page
+% -------------------------------------------------------------
+\begin{titlepage}
+    \centering
+    \vspace*{0.5cm}
+    {\Large \textbf{MINISTERUL EDUCA\c{T}IEI, CULTURII \c{S}I CERCET\u{A}RII AL REPUBLICII MOLDOVA}}\\[0.2cm]
+    {\large \textbf{UNIVERSITATEA TEHNIC\u{A} A MOLDOVEI}}\\[0.2cm]
+    {\large \textbf{FACULTATEA CALCULATOARE, INFORMATIC\u{A} \c{S}I MICROELECTRONIC\u{A}}}\\[0.2cm]
+    {\large \textbf{DEPARTAMENTUL INGINERIA SOFTWARE \c{S}I AUTOMATIC\u{A}}}\\[2.5cm]
+
+    {\Huge \textbf{RAPORT}}\\[0.4cm]
+    {\LARGE \textbf{Lucrarea de laborator Nr. 3}}\\[0.3cm]
+    {\Large \textbf{Disciplina: Network Programming (Programarea \^{i}n Re\c{t}ea)}}\\[0.5cm]
+    {\Large \textbf{Tema: A Local Network Chat (Peer-to-Peer over UDP)}}\\[2.5cm]
+
+    \begin{minipage}{0.45\textwidth}
+        \flushleft
+        \textbf{A efectuat:}\\
+        Kushnirenko Ecaterina \\
+        \c{S}oimu Ionu\c{t} \\
+        \textit{Grupa FAF-243}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.45\textwidth}
+        \flushright
+        \textbf{A verificat:}\\
+        Asistent universitar Fistic Cristofor\\
+        \textit{Departamentul ISA, UTM}
+    \end{minipage}
+
+    \vfill
+    {\large \textbf{Chi\c{s}in\u{a}u, 2026}}
+\end{titlepage}
+
+\newpage
+\tableofcontents
+\newpage
+
+% -------------------------------------------------------------
+% Section 1: Objective & Requirements
+% -------------------------------------------------------------
+\section{Objective and Requirements}
+
+The primary goal of this laboratory work is to construct a fully decentralized, serverless local network peer-to-peer (P2P) chat system operating directly over raw UDP sockets. Every executing instance of the software functions as an autonomous peer capable of both transmitting and receiving datagrams simultaneously without any centralized coordination, broker, or directory server.
+
+\subsection{Keywords}
+\texttt{UDP sockets} $\cdot$ \texttt{broadcast} $\cdot$ \texttt{multicast} $\cdot$ \texttt{unicast} $\cdot$ \texttt{peer-to-peer} $\cdot$ \texttt{key derivation} $\cdot$ \texttt{encryption}
+
+\subsection{Key Technical Requirements}
+\begin{itemize}[noitemsep]
+    \item \textbf{Low-Level Direct Sockets API}: All communications must interface strictly with the native operating system socket subsystem using raw UDP datagrams (\texttt{Socket} class in C\# initialized with \texttt{SocketType.Dgram} and \texttt{ProtocolType.Udp}). Higher-level wrappers or libraries such as \texttt{UdpClient}, \texttt{socketserver}, or third-party RPC and discovery frameworks are strictly prohibited.
+    \item \textbf{Decentralized Peer-to-Peer Topology}: There is no central server. Every instance acts as an equivalent node that sends and receives datagrams. The user's screen name and target chat port are passed via command-line arguments; all peers within a chat session share the identical designated port.
+    \item \textbf{Multi-Instance Local Execution}: Multiple peers must be capable of running simultaneously on the same physical computer as well as across different machines within the same local area network subnet.
+    \item \textbf{Message Framing and Wire Encoding}: Each message constitutes exactly one datagram containing a compact UTF-8 encoded JSON object bounded by a 4096-byte maximum buffer. User chat messages are limited to at most 500 characters.
+    \item \textbf{Structured Diagnostic Logging}: Each running peer generates an independent log file named \texttt{chat-<name>-<pid>.log}. Every transmitted, received, or dropped datagram must append a standardized log entry capturing the microsecond timestamp, operation action (\texttt{SENT}, \texttt{RECV}, \texttt{DROP}), remote endpoint address, message type/reason, and payload size.
+    \item \textbf{Crash-Proof Resiliency}: Malformed datagrams, invalid message types, unauthorized characters, foreign network noise, or oversized packets must be silently rejected and logged without interrupting application execution or terminating the process.
+\end{itemize}
+
+% -------------------------------------------------------------
+% Section 2: Architectural Split & Division of Work
+% -------------------------------------------------------------
+\section{Architectural Design and Task Split}
+
+To establish a clear, balanced, and equitable division of responsibilities, the project is structured across two complementary technical domains. The core architectural split is detailed in Table~\ref{tab:split}:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}p{3.2cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
+\toprule
+Domain Criterion & Student A (\c{S}oimu Ionu\c{t}) & Student B (Kushnirenko Ecaterina) \\
+\midrule
+Hardest Part & Shared-port binding (\texttt{SO\_REUSEADDR}) and the dual-socket unicast architecture for reliable private messages & Decentralized presence state machine: discovery timers, heartbeat intervals, timeout cleanup, and name conflicts \\
+Assigned Tasks & \textbf{Task 1} (The General Channel) and \textbf{Task 3} (Private Messages) & \textbf{Task 2} (Who is Online) and \textbf{Task 4} (Secure Private Messages) \\
+Supporting Work & Background receive threads, socket lifecycle, and interactive CLI console parser (\texttt{Net.cs}, \texttt{Program.cs}) & Datagram validation schema, serialization parser, structured logging, and documentation (\texttt{Protocol.cs}, \texttt{Log.cs}, \texttt{README.md}) \\
+\bottomrule
+\end{tabularx}
+\caption{Collaborator responsibility partitioning and fairness justification.}
+\label{tab:split}
+\end{table}
+
+\subsection{Why This Division is Fair and Balanced}
+Each collaborator addresses a fundamental, complex networking challenge paired with a supporting operational module:
+\begin{enumerate}[noitemsep]
+    \item \textbf{Student A} tackled the low-level operating system socket intricacies. The most demanding engineering hurdle was resolving the Linux UDP shared-port delivery dilemma: when multiple sockets bind to the same broadcast port using \texttt{SO\_REUSEADDR}, the OS kernel distributes incoming unicast datagrams arbitrarily to only one bound socket. Student A solved this by conceiving and implementing the \textbf{Dual-Socket Architecture}, wherein each peer maintains an ephemeral unicast socket (\texttt{0.0.0.0:0}) and transmits \textit{every} outgoing packet from this socket, thereby exposing a unique source port for targeted private messaging.
+    \item \textbf{Student B} resolved the decentralized state and cryptographic hurdles: managing presence without a server (1-second join queries, 5-second heartbeats, 15-second inactivity timeout evictions), preventing identity collisions, implementing PBKDF2-HMAC-SHA256 key derivation with 600,000 iterations, and securing private communications via AES-256-GCM authenticated encryption.
+\end{enumerate}
+
+% -------------------------------------------------------------
+% Section 3: Hardware Environment
+% -------------------------------------------------------------
+\section{Hardware and Execution Environment}
+
+All performance benchmarks, multi-instance concurrency validations, and network transmission tests were conducted on modern multi-core x86\_64 Linux workstations:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{4.5cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Hardware / Environment Parameter} & \textbf{Workstation 1 (Student A)} & \textbf{Workstation 2 (Student B)} \\
+\midrule
+CPU Model & AMD Ryzen AI 7 350 & AMD Ryzen 5 7535HS \\
+Physical Cores / Logical Threads & 8 Cores / 16 Threads (SMT) & 6 Cores / 12 Threads (SMT) \\
+RAM & 32 GB DDR5 & 16 GB DDR5 \\
+Primary Storage & 953.9 GB Micron NVMe SSD & 512 GB SK Hynix / 1 TB Transcend NVMe \\
+Operating System & Arch Linux (Kernel 7.2.8) & CachyOS / Arch Linux (Kernel 7.2.9) \\
+Language / Runtime Version & C\# / .NET 10.0.114 & C\# / .NET 10.0.114 \\
+Compiler \& Toolchain & Roslyn / dotnet CLI & Roslyn / dotnet CLI \\
+\bottomrule
+\end{tabularx}
+\caption{System specifications of testing environments.}
+\end{table}
+
+% -------------------------------------------------------------
+% Section 4: Task-by-Task Implementation & Technical Details
+% -------------------------------------------------------------
+\section{Task-by-Task Technical Implementation}
+
+\subsection{Task 1: The General Channel (Broadcast Socket, Port Reuse, and Echo Suppression)}
+\textbf{Objective}: Establish a shared broadcast channel over raw UDP where any participant can type a message that reaches all peers across the network or on the same computer with a single datagram, while guaranteeing that each author displays their message exactly once.
+
+\subsubsection{Technical Architecture and Implementation Details (Student A)}
+In traditional networking, binding multiple processes to the same UDP port triggers an operating system error (\texttt{Address already in use}). However, for a serverless LAN chat where all nodes must agree on a single well-known port, every peer must bind to that identical port. 
+
+Student A resolved this requirement in \texttt{Net.cs} by configuring the broadcast listening socket with the \texttt{SO\_REUSEADDR} socket option:
+\begin{lstlisting}[language={[Sharp]C}, caption={Task 1: Shared-port binding and broadcast socket initialization in Net.cs.}]
+// task 1: bind general broadcast socket on shared port
+broadcastSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+broadcastSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+broadcastSocket.EnableBroadcast = true;
+broadcastSocket.Bind(new IPEndPoint(IPAddress.Any, port));
+\end{lstlisting}
+
+When a message is broadcast to \texttt{255.255.255.255:port}, the Linux kernel replicates the datagram to all local sockets bound to \texttt{0.0.0.0:port} with \texttt{SO\_REUSEADDR}. Consequently, the sender's own broadcast socket also receives a copy of its transmitted message (loopback echo). To prevent duplicate messages on the sender's terminal:
+\begin{enumerate}
+    \item Each peer generates a cryptographically secure 8-byte random hex identifier at startup (\texttt{Protocol.MyId = Convert.ToHexString(RandomNumberGenerator.GetBytes(8))}).
+    \item Every message payload carries this identifier in its \texttt{id} field.
+    \item When transmitting, the console UI immediately prints the typed line. When the incoming datagram is received on the socket, the listener evaluates \texttt{m.Id == Protocol.MyId}. If true, the echo is recognized and suppressed.
+\end{enumerate}
+
+\begin{lstlisting}[language={[Sharp]C}, caption={Task 1: Echo suppression and broadcast loop in Net.cs.}]
+// task 1: broadcast to general channel
+public static void Broadcast(Message m){
+    if (privateSocket == null) return;
+    byte[] data = Protocol.Encode(m);
+    IPEndPoint target = new IPEndPoint(IPAddress.Broadcast, chatPort);
+    try {
+        privateSocket.SendTo(data, target);
+        Log.Send(target, m.Type, data.Length);
+    } catch (SocketException ex) when (ex.SocketErrorCode == SocketError.NetworkUnreachable) {
+        // fallback for isolated host/loopback environments without default gateway
+        IPEndPoint fallback = new IPEndPoint(IPAddress.Parse("127.255.255.255"), chatPort);
+        privateSocket.SendTo(data, fallback);
+        Log.Send(fallback, m.Type, data.Length);
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Defense Questions for Task 1}
+\begin{enumerate}[label=\textbf{Q\arabic*.}, leftmargin=*]
+    \item \textbf{Why is the socket bound to all the addresses of the computer (0.0.0.0), and not to its IP address or to 127.0.0.1?}
+    
+    \textit{Answer}: Binding to \texttt{0.0.0.0} (\texttt{INADDR\_ANY}) instructs the operating system kernel to accept datagrams arriving on any local network interface, including physical Ethernet adapters, Wi-Fi interfaces, and the virtual loopback adapter. Crucially, UDP broadcast datagrams directed to the subnet broadcast address (such as \texttt{192.168.1.255}) or limited broadcast (\texttt{255.255.255.255}) are addressed to the broadcast IP, not to the host's specific unicast IP. If a socket is bound strictly to a specific IP (e.g., \texttt{192.168.1.50}), many operating systems will filter out datagrams whose destination IP header does not match that exact address, causing broadcasts to be missed. Similarly, binding to \texttt{127.0.0.1} restricts the socket exclusively to loopback traffic from the local machine, blinding the peer to packets originating from other computers on the LAN.
+
+    \item \textbf{How can several peers on the same computer bind the same port? Which of them receive a message of the general channel?}
+    
+    \textit{Answer}: Several peers can bind to the same port by asserting the \texttt{SO\_REUSEADDR} socket level option (\texttt{SocketOptionName.ReuseAddress = true}) prior to calling \texttt{Bind()}. When a datagram is sent as a \textbf{broadcast} (destination IP \texttt{255.255.255.255} or subnet broadcast) to that shared port, the operating system kernel copies and delivers the datagram to \textbf{all} listening sockets bound to that port. However, if a \textbf{unicast} datagram is sent to that shared port, the kernel delivers it to only \textbf{one} arbitrarily chosen socket (often the most recently bound or based on hash buckets). This fundamental distinction is why a dual-socket architecture is necessary for private messages.
+
+    \item \textbf{Your own message comes back to you. How does your chat recognise it?}
+    
+    \textit{Answer}: Because the kernel delivers broadcast datagrams to all bound sockets on the local machine, the sender's broadcast socket inevitably receives its own transmitted packet. To differentiate between incoming messages from external peers and local loopback echoes, each peer instance generates a unique 8-byte random hexadecimal identifier (\texttt{Protocol.MyId}) at launch. Every outgoing datagram contains this \texttt{id}. When a packet arrives, the receiver inspects the field: if \texttt{m.Id == Protocol.MyId}, the application recognizes the datagram as its own loopback echo and discards it, preventing the user's message from being displayed twice.
+
+    \item \textbf{Why at most 500 characters? What would happen to a message of 100 000 characters?}
+    
+    \textit{Answer}: The 500-character restriction guarantees that the entire message, alongside its JSON framing, metadata, encryption nonces, and authentication tags, comfortably fits well within standard network Maximum Transmission Units (MTUs, typically 1500 bytes on Ethernet). If a peer attempted to send a 100,000-character message:
+    \begin{itemize}[noitemsep]
+        \item At the transport layer, a single UDP datagram has a theoretical maximum payload of $65,535 - 8 - 20 = 65,507$ bytes (dictated by the 16-bit length field in the UDP header). Attempting to pass 100,000 bytes directly to \texttt{sendto} causes the operating system socket call to fail immediately with an error (e.g., \texttt{EMSGSIZE} / \texttt{Message too long}).
+        \item Even if fragmented across multiple UDP datagrams, UDP provides no reassembly tracking or reliability. If even one fragment is lost in transit, the entire datagram is dropped by the IP reassembly layer, resulting in near-total packet loss on typical networks.
+    \end{itemize}
+\end{enumerate}
+
+% -------------------------------------------------------------
+\subsection{Task 2: Who is Online (Presence Discovery, Heartbeat, and Conflict Detection)}
+\textbf{Objective}: Enable autonomous peer discovery, dynamic membership tracking, identity conflict resolution, and graceful or ungraceful departure detection without any server.
+
+\subsubsection{Technical Architecture and Implementation Details (Student B)}
+The presence protocol is governed by a decentralized state machine implemented in \texttt{Peers.cs} and \texttt{Program.cs}:
+\begin{itemize}
+    \item \textbf{Join Phase}: At startup, the peer broadcasts a \texttt{join} datagram and pauses for up to 1000~ms. Existing peers respond immediately with a unicast \texttt{join\_reply} containing their identity and endpoint. If an existing peer detects another node attempting to claim its identical screen name, it immediately transmits a \texttt{name\_taken} unicast packet, prompting the new node to abort.
+    \item \textbf{Liveness Heartbeat}: Every 5 seconds, an active peer broadcasts a \texttt{heartbeat} datagram. Upon receipt, peers refresh the node's \texttt{LastSeen} timestamp in their in-memory dictionary.
+    \item \textbf{Inactivity Eviction}: A background timer executes every second to scan registered peers. Any node whose \texttt{LastSeen} timestamp exceeds 15 seconds is deemed offline, pruned from the table, and announced to the terminal: \texttt{* <name> left the chat}.
+    \item \textbf{Graceful Exit}: When a user issues \texttt{/quit}, the client broadcasts a \texttt{leave} datagram, allowing peers to immediately prune the user without awaiting the 15-second timeout.
+\end{itemize}
+
+\begin{lstlisting}[language={[Sharp]C}, caption={Task 2: Thread-safe peer tracking and timeout pruning in Peers.cs.}]
+// drop peers not heard from for 15s
+public static List<string> CheckTimeouts(TimeSpan timeout){
+    List<string> expired = new List<string>();
+    DateTime now = DateTime.UtcNow;
+    lock (Lock){
+        foreach (var kvp in table){
+            if (now - kvp.Value.LastSeen > timeout){
+                expired.Add(kvp.Key);
+            }
+        }
+        foreach (var name in expired){
+            table.Remove(name);
+        }
+    }
+    return expired;
+}
+\end{lstlisting}
+
+\subsubsection{Defense Questions for Task 2}
+\begin{enumerate}[label=\textbf{Q\arabic*.}, leftmargin=*]
+    \item \textbf{How does a new peer learn who is already online, and how long does it take?}
+    
+    \textit{Answer}: The newly launched peer broadcasts a \texttt{join} datagram to the chat port across the subnet. All online peers listening on that port receive the broadcast and immediately respond with a unicast \texttt{join\_reply} sent directly to the new peer's ephemeral source endpoint. Because this exchange involves a single network round-trip time across a local area network (typically sub-millisecond to a few milliseconds), the new peer discovers the full roster of active users almost instantly. The startup sequence reserves a 1-second timeout window, which provides a generous margin for all existing peers to respond and register.
+
+    \item \textbf{The process of a peer is killed. How and when do the others notice? Why can they not notice it at once, as a TCP server notices a closed connection?}
+    
+    \textit{Answer}: In TCP, an abrupt process termination causes the host operating system kernel to automatically close open socket descriptors and transmit a \texttt{FIN} or \texttt{RST} packet to the remote endpoint, immediately alerting the server of connection closure. In UDP, there is no persistent virtual circuit, no connection handshake, and no kernel-level teardown exchange. When a UDP process is killed (e.g., \texttt{kill -9}), the kernel sends nothing across the wire. Remote peers notice the departure purely through the absence of periodic heartbeat datagrams. Since each peer emits a heartbeat every 5 seconds and peers timeout after 15 seconds of silence, other nodes will detect the departure within 10 to 15 seconds following the kill event.
+
+    \item \textbf{Two peers start with the same name at the same moment. What happens?}
+    
+    \textit{Answer}: When two peers launch concurrently with the same name, both broadcast their \texttt{join} datagram containing identical names but different generated \texttt{id} values. When Peer 1 receives the \texttt{join} packet from Peer 2, it recognizes that another node is claiming its name with a conflicting ID and transmits a \texttt{name\_taken} unicast packet back to Peer 2. Symmetrically, Peer 2 performs the exact same conflict check upon receiving Peer 1's \texttt{join} and transmits \texttt{name\_taken} back to Peer 1. Both nodes receive \texttt{name\_taken} within their 1-second startup window, report that the name is contested/taken, and safely exit without polluting the chat room.
+\end{enumerate}
+
+% -------------------------------------------------------------
+\subsection{Task 3: Private Messages (Unicast Sockets and Ephemeral Source Port Routing)}
+\textbf{Objective}: Deliver private messages strictly and exclusively to the intended recipient peer, ensuring that no other peer on the network or on the same computer receives the datagram.
+
+\subsubsection{Technical Architecture and Implementation Details (Student A)}
+Task 3 presents the most critical architectural trap in UDP network programming. On a single computer where multiple chat peers run, all peers bind their broadcast socket to the shared chat port using \texttt{SO\_REUSEADDR}. If a private message were sent as a unicast datagram to \texttt{127.0.0.1:chatPort}, the Linux operating system kernel would deliver that datagram to \textbf{only one} arbitrary socket bound to that port. There is zero guarantee that the intended recipient receives it, and worse, an unintended peer might receive someone else's private message.
+
+Student A engineered an elegant \textbf{Dual-Socket Architecture} to overcome this kernel limitation:
+\begin{enumerate}
+    \item \textbf{Socket 1 (Broadcast Socket)}: Bound to \texttt{0.0.0.0:chatPort} with \texttt{SO\_REUSEADDR = true}. Its sole function is to listen for incoming broadcast traffic (\texttt{msg}, \texttt{join}, \texttt{heartbeat}, \texttt{leave}).
+    \item \textbf{Socket 2 (Private Unicast Socket)}: Bound to \texttt{0.0.0.0:0}. The operating system dynamically assigns an available \textbf{ephemeral port} (e.g., 53145) exclusively to this socket. No other process shares this port.
+    \item \textbf{Universal Transmission Rule}: Every single datagram sent by the peer—whether a broadcast or a unicast—is transmitted \textbf{exclusively from the private socket} (\texttt{privateSocket.SendTo}).
+    \item \textbf{Automatic Endpoint Learning}: Because every packet originates from the private socket, the operating system kernel writes that peer's unique ephemeral port into the UDP header's source port field. When any peer receives any datagram, it extracts the sender's remote endpoint (\texttt{recvfrom}) and saves it in \texttt{Peers.Update}.
+    \item \textbf{Targeted Unicast Delivery}: When Peer A wishes to send a private message to Peer B, it retrieves Peer B's ephemeral endpoint and sends the datagram directly to that unique port. Because Peer B's private socket is the sole socket bound to that port, the operating system delivers the datagram directly and exclusively to Peer B.
+\end{enumerate}
+
+\begin{lstlisting}[language={[Sharp]C}, caption={Task 3: Ephemeral private socket creation and targeted send in Net.cs.}]
+// task 3: bind unicast private socket on ephemeral port (0)
+// all datagrams are sent from this socket so receiver learns our unicast port
+privateSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+privateSocket.EnableBroadcast = true;
+privateSocket.Bind(new IPEndPoint(IPAddress.Any, 0));
+
+// task 3: unicast targeted send directly to peer endpoint
+public static void SendTo(IPEndPoint endpoint, Message m){
+    if (privateSocket == null || endpoint == null) return;
+    byte[] data = Protocol.Encode(m);
+    try {
+        privateSocket.SendTo(data, endpoint);
+        Log.Send(endpoint, m.Type, data.Length);
+    } catch (Exception ex){
+        Log.Dropped(endpoint, "send error: " + ex.Message, data.Length);
+    }
+}
+\end{lstlisting}
+
+If the user attempts to send a private message to a peer who is not online, the command parser performs a lookup in \texttt{Peers.TryGet}. If absent, it outputs \texttt{* <name> is not online} without transmitting any packet, satisfying the error reporting requirement.
+
+\subsubsection{Defense Questions for Task 3}
+\begin{enumerate}[label=\textbf{Q\arabic*.}, leftmargin=*]
+    \item \textbf{Several peers on one computer share the port of the chat. How does a private message reach the right one?}
+    
+    \textit{Answer}: A private message does not target the shared chat port. Instead, each peer binds an auxiliary private socket to ephemeral port 0 (\texttt{0.0.0.0:0}), prompting the operating system kernel to allocate a distinct, globally unique port number exclusively to that socket. Every peer transmits all outgoing datagrams (both broadcasts and unicasts) from this private socket. Consequently, whenever any packet is received, the remote peer inspects the UDP source endpoint and records the unique ephemeral address of the sender. Private messages are then dispatched directly to that learned ephemeral endpoint, ensuring that only the specific intended socket receives the packet.
+
+    \item \textbf{Why is a private message not sent to everybody, with the name of its receiver inside?}
+    
+    \textit{Answer}: Broadcasting private messages to all participants is inefficient and insecure:
+    \begin{itemize}[noitemsep]
+        \item \textbf{Bandwidth and CPU Overhead}: If $N$ peers are active, broadcasting a private message forces $N-1$ uninvolved hosts to receive, deserialize, inspect, and discard the packet, wasting network capacity and processing cycles.
+        \item \textbf{Traffic Analysis and Confidentiality}: Broadcasting exposes metadata (who is communicating with whom, message timing, and payload sizes) to every participant and network eavesdropper, violating privacy even if the payload is encrypted.
+    \end{itemize}
+
+    \item \textbf{What happens to a private message sent to a peer that left a second ago?}
+    
+    \textit{Answer}: If the peer departed gracefully via \texttt{/quit}, it broadcasted a \texttt{leave} datagram, causing other peers to prune it immediately from their roster; attempting to send to it will instantly yield \texttt{* <name> is not online}. However, if the peer disconnected abruptly (crash or network pull) one second ago, it remains in the local routing table until the 15-second timeout expires. The sender will transmit the UDP datagram to the former ephemeral endpoint. At the destination machine:
+    \begin{itemize}[noitemsep]
+        \item The operating system finds no socket bound to that ephemeral port and automatically generates an \textbf{ICMP Port Unreachable} message back to the sender.
+        \item In standard UDP socket programming, this ICMP packet is either silently discarded by the sender's network stack or surfaces asynchronously on the next socket call. The private message is simply lost, mirroring UDP's fundamental best-effort semantics.
+    \end{itemize}
+
+    \item \textbf{UDP can lose a private message. How could the sender know that it arrived, and what would it do when it did not?}
+    
+    \textit{Answer}: To build delivery verification over UDP, an application must implement an Application-Layer Acknowledgement (ACK) protocol:
+    \begin{enumerate}[noitemsep]
+        \item The sender assigns a monotonically increasing sequence number or unique message ID to each private message, transmits the packet, and retains a copy in an unacknowledged message buffer while initiating a retransmission timer (e.g., 500~ms).
+        \item Upon receiving the private message, the recipient transmits a dedicated unicast \texttt{ack} datagram carrying the corresponding message ID back to the sender.
+        \item If the sender receives the \texttt{ack} before the timer expires, it prunes the message from its buffer and flags it as delivered. If the timer elapses without an ACK, the sender retransmits the datagram (up to a predetermined retry limit, such as 3 attempts). If all retries fail, it alerts the user with an error indicating delivery failure.
+    \end{enumerate}
+\end{enumerate}
+
+% -------------------------------------------------------------
+\subsection{Task 4: Secure Private Messages (PBKDF2 Key Derivation and AES-256-GCM)}
+\textbf{Objective}: Guarantee that private communications remain confidential and tamper-proof against passive eavesdroppers and active adversaries by deriving a cryptographically strong symmetric key from a shared passphrase and encrypting all private messages using authenticated encryption.
+
+\subsubsection{Cryptographic Architecture and Implementation Details (Student B)}
+The cryptographic subsystem is encapsulated within \texttt{Crypto.cs}:
+\begin{itemize}
+    \item \textbf{Key Derivation Function}: Rather than utilizing user passphrase bytes directly, the 256-bit (32-byte) symmetric key is derived using \textbf{PBKDF2-HMAC-SHA256} with the fixed salt \texttt{"LAN-Chat salt v1"} and 600,000 computation iterations (\texttt{Rfc2898DeriveBytes.Pbkdf2}).
+    \item \textbf{Authenticated Encryption Algorithm}: Private messages are encrypted using \textbf{AES-256-GCM} (Galois/Counter Mode). For each transmission, a cryptographically secure 12-byte random nonce is generated via \texttt{RandomNumberGenerator.GetBytes(12)}.
+    \item \textbf{Associated Authenticated Data (AAD)}: To prevent identity spoofing or message misdirection, the string \texttt{"<from>><to>"} (e.g., \texttt{"Ion>Maria"}) is supplied as authenticated data. The 16-byte authentication tag is concatenated with the ciphertext and Base64-encoded on the wire.
+\end{itemize}
+
+\begin{lstlisting}[language={[Sharp]C}, caption={Task 4: AES-256-GCM authenticated encryption and decryption in Crypto.cs.}]
+// task 4: encrypt private message with AES-256-GCM
+public static bool Encrypt(string to, string text, out string nonceBase64, out string cipherBase64){
+    byte[] nonce = RandomNumberGenerator.GetBytes(NonceSize);
+    byte[] plaintext = Encoding.UTF8.GetBytes(text);
+    byte[] ciphertext = new byte[plaintext.Length];
+    byte[] tag = new byte[TagSize];
+    byte[] ad = Encoding.UTF8.GetBytes(Protocol.MyName + ">" + to);
+
+    using (var aes = new AesGcm(key, TagSize)){
+        aes.Encrypt(nonce, plaintext, ciphertext, tag, ad);
+    }
+    byte[] combined = new byte[ciphertext.Length + TagSize];
+    Buffer.BlockCopy(ciphertext, 0, combined, 0, ciphertext.Length);
+    Buffer.BlockCopy(tag, 0, combined, ciphertext.Length, TagSize);
+
+    nonceBase64 = Convert.ToBase64String(nonce);
+    cipherBase64 = Convert.ToBase64String(combined);
+    return true;
+}
+\end{lstlisting}
+
+\subsubsection{Defense Questions for Task 4}
+\begin{enumerate}[label=\textbf{Q\arabic*.}, leftmargin=*]
+    \item \textbf{Why is the key derived with a key-derivation function, and not taken from the bytes of the passphrase?}
+    
+    \textit{Answer}: User-selected passphrases exhibit low entropy, non-uniform byte distributions, and variable lengths. Directly using passphrase bytes has severe security vulnerabilities:
+    \begin{itemize}[noitemsep]
+        \item AES-256 strictly requires a uniform 256-bit key. Truncating or padding short passwords results in weak keys susceptible to brute-force attacks.
+        \item Key Derivation Functions (like PBKDF2 with 600,000 iterations) introduce deliberate computational work factor hardening. This dramatically raises the computational cost of dictionary and rainbow-table attacks against intercepted traffic.
+    \end{itemize}
+
+    \item \textbf{Which algorithm encrypts your messages? Why must its nonce (or IV) never be used twice with the same key, and where do yours come from?}
+    
+    \textit{Answer}: Messages are encrypted using \textbf{AES-256-GCM}. GCM is an authenticated stream cipher mode based on counter mode (CTR) combined with GMAC. Reusing a nonce with the identical key is catastrophic:
+    \begin{itemize}[noitemsep]
+        \item In CTR mode, encrypting two plaintexts with the same key and nonce produces $C_1 = P_1 \oplus K$ and $C_2 = P_2 \oplus K$. An eavesdropper can XOR the two ciphertexts ($C_1 \oplus C_2 = P_1 \oplus P_2$), completely eliminating the key and exposing plaintext differences.
+        \item Furthermore, in GCM mode, nonce reuse allows an attacker to solve polynomial equations over Galois Field $GF(2^{128})$ and recover the internal authentication hash key $H$, allowing the forgery of arbitrary valid ciphertext messages.
+    \end{itemize}
+    In our implementation, every message draws a fresh 12-byte nonce from the operating system's cryptographic random number generator (\texttt{RandomNumberGenerator.GetBytes(12)}), which relies on Linux \texttt{/dev/urandom}.
+
+    \item \textbf{Every member of the chat knows the passphrase. Who can read a private message between Ana and Ion? What would be needed so that only the two of them can?}
+    
+    \textit{Answer}: Because all members share the identical passphrase, every chat member derives the exact same 256-bit symmetric key. Although private messages are transmitted via unicast directly between Ana and Ion, any member situated on the same broadcast domain or who intercepts the datagram (via promiscuous mode or Wi-Fi sniffing) can decrypt the ciphertext. To ensure that strictly Ana and Ion can decipher their communication:
+    \begin{itemize}[noitemsep]
+        \item The system would require \textbf{Asymmetric Public-Key Cryptography} (such as Diffie-Hellman or ECDH over Curve25519). Each user would publish a public key during join/presence discovery. Ana and Ion would compute a pairwise shared secret known exclusively to the two of them.
+    \end{itemize}
+
+    \item \textbf{Can somebody who does not know the passphrase change an encrypted message without the receiver noticing? What protects against it?}
+    
+    \textit{Answer}: No. AES-256-GCM provides \textbf{Authenticated Encryption with Associated Data (AEAD)}. In addition to encrypting the plaintext, GCM computes a 128-bit (16-byte) cryptographic authentication tag using the GHASH universal hash function over Galois Field $GF(2^{128})$. If an attacker alters even a single bit of the ciphertext, nonce, or associated data (\texttt{"Ana>Ion"}), the calculated authentication tag at the receiver will fail to match. In C\#, \texttt{AesGcm.Decrypt} will detect the corruption and throw an \texttt{AuthenticationTagMismatchException}, causing the message to be dropped and logged.
+\end{enumerate}
+
+% -------------------------------------------------------------
+% Section 5: Bonus Features and Resiliency
+% -------------------------------------------------------------
+\section{Bonus Features and Resiliency}
+
+\subsection{Seamless Loopback and Offline LAN Fallback}
+When running in containerized, isolated, or offline developer workstations without an active default network gateway, Linux returns an error (\texttt{SocketError.NetworkUnreachable}) when broadcasting to limited broadcast \texttt{255.255.255.255}. To ensure complete portability, our broadcast routine catches this condition and seamlessly falls back to the loopback broadcast address \texttt{127.255.255.255}.
+
+\subsection{Robust Datagram Validation and Fault Isolation}
+Every incoming packet is subjected to rigorous bounds checking in \texttt{Protocol.TryDecode}:
+\begin{itemize}[noitemsep]
+    \item Datagrams exceeding 4096 bytes are dropped immediately (\texttt{"too long"}).
+    \item Non-JSON noise or corrupted payloads trigger a \texttt{JsonException} handler and log \texttt{"not json"}.
+    \item Screen names must conform to 1--20 alphanumeric characters, underscores, or hyphens.
+    \item Control characters inside general messages are strictly rejected.
+\end{itemize}
+
+% -------------------------------------------------------------
+% Section 6: Comprehensive Oral Defense Control Questions
+% -------------------------------------------------------------
+\section{Comprehensive Oral Defense Control Questions}
+
+\begin{enumerate}[label=\textbf{Control Question \arabic*:}, leftmargin=*]
+    \item \textbf{Which promises of TCP does UDP not make? Which of them did your chat rebuild, and which did it do without?}
+    
+    \textit{Answer}: 
+    \begin{itemize}
+        \item \textbf{Promises TCP makes that UDP does not}:
+        \begin{enumerate}[label=(\alph*), noitemsep]
+            \item \textit{Reliable Delivery}: TCP guarantees that every byte is delivered via acknowledgements and retransmissions. UDP is best-effort; lost packets are discarded.
+            \item \textit{In-Order Sequencing}: TCP reconstructs disordered packets using sequence numbers. UDP datagrams may arrive out of order.
+            \item \textit{Connection State}: TCP requires a 3-way handshake and maintains stateful virtual circuits. UDP is connectionless.
+            \item \textit{Flow and Congestion Control}: TCP dynamically adjusts window sizes to prevent buffer overflow and network collapse. UDP transmits at whatever rate the application dictates.
+            \item \textit{Duplicate Suppression}: TCP identifies and discards duplicate packets at the transport layer. UDP passes duplicate datagrams directly to the application.
+        \end{enumerate}
+        \item \textbf{What our chat rebuilt}:
+        \begin{enumerate}[label=(\alph*), noitemsep]
+            \item \textit{Duplicate / Loopback Suppression}: Rebuilt using unique random 8-byte instance identifiers (\texttt{m.Id == Protocol.MyId}).
+            \item \textit{Liveness and Presence State}: Rebuilt via periodic 5-second heartbeats and 15-second inactivity timeout evictions.
+            \item \textit{Integrity Verification}: Rebuilt cryptographically via AES-GCM 16-byte authentication tags.
+        \end{enumerate}
+        \item \textbf{What our chat did without}: We deliberately avoided rebuilding full retransmission queues, ordering buffers, and congestion control, keeping the chat lightweight, immediate, and responsive.
+    \end{itemize}
+
+    \item \textbf{Why is one sendto always one recvfrom with UDP, while one send is not one receive with TCP? Why did your chat need no delimiter and no length prefix?}
+    
+    \textit{Answer}: UDP is a \textbf{message-oriented (datagram)} protocol, whereas TCP is a \textbf{byte-stream} protocol:
+    \begin{itemize}[noitemsep]
+        \item In UDP, the operating system kernel preserves datagram boundaries. When an application calls \texttt{sendto} with a 75-byte buffer, the kernel packages that exact payload into a single UDP packet containing an explicit 16-bit length header. When the receiving host calls \texttt{recvfrom}, the kernel returns that exact single datagram in full. One \texttt{sendto} corresponds strictly to one \texttt{recvfrom}.
+        \item In TCP, the socket treats data as a continuous, unstructured sequence of bytes. Multiple calls to \texttt{send} may be coalesced into one TCP segment (via Nagle's algorithm), or a single large \texttt{send} may be fragmented across several TCP segments. Therefore, TCP applications must implement application-layer framing (such as newline delimiters $\backslash\text{n}$ or explicit length prefixes).
+        \item Because UDP preserves exact message boundaries, each chat message is encapsulated entirely within a single datagram. No delimiters or length prefixes were necessary.
+    \end{itemize}
+
+    \item \textbf{How big can a UDP datagram be? Why should it stay below about 1 400 bytes on a real network?}
+    
+    \textit{Answer}: 
+    \begin{itemize}[noitemsep]
+        \item \textbf{Theoretical Maximum}: The UDP header contains a 16-bit \textit{Length} field, allowing a maximum theoretical datagram size of $2^{16} - 1 = 65,535$ bytes. Subtracting the 8-byte UDP header and the minimum 20-byte IPv4 header yields an absolute maximum payload of \textbf{65,507 bytes}.
+        \item \textbf{Why it must stay below $\approx$1,400 bytes}: Standard Ethernet has a Maximum Transmission Unit (MTU) of 1,500 bytes. Subtracting 20 bytes for IPv4, 8 bytes for UDP, and accounting for optional tunnel/VLAN/PPPoE headers (which frequently consume 40--60 bytes), any datagram exceeding $\approx$1,400--1,472 bytes forces IP packet fragmentation at the network layer. If any fragment is lost or dropped by a router or firewall, the destination IP layer cannot reassemble the packet, resulting in total message loss. Keeping datagrams below 1,400 bytes ensures that each datagram fits into a single, unfragmented physical frame.
+    \end{itemize}
+
+    \item \textbf{What is the difference between broadcast and multicast? Which one does your chat use for the general channel, and what would change with the other one?}
+    
+    \textit{Answer}:
+    \begin{itemize}[noitemsep]
+        \item \textbf{Broadcast} (IPv4 \texttt{255.255.255.255} or subnet broadcast): The packet is forwarded across the entire local broadcast domain. Every network interface card (NIC) on the subnet must process the frame, pass it to the operating system kernel, and inspect whether any socket is listening on that port. It cannot traverse routers.
+        \item \textbf{Multicast} (Class D addresses \texttt{224.0.0.0} to \texttt{239.255.255.255}): Hosts subscribe to specific multicast groups using IGMP (Internet Group Management Protocol). Network switches equipped with IGMP snooping forward multicast frames strictly to switch ports where members reside.
+        \item \textbf{What our chat uses}: Our chat uses \textbf{broadcast}.
+        \item \textbf{What would change with multicast}: Each peer would configure its socket with \texttt{AddMembership} to join a dedicated Class D group (e.g., \texttt{239.255.1.1}). General messages would be sent to that multicast IP. This would reduce network load on uninvolved LAN hosts and allow the chat to span across multiple subnets supported by multicast routers.
+    \end{itemize}
+
+    \item \textbf{How many sockets does your chat use? To which address and port is each of them bound, and why?}
+    
+    \textit{Answer}: Our chat uses exactly \textbf{two UDP sockets} per running instance:
+    \begin{enumerate}
+        \item \textbf{Broadcast Listening Socket}: Bound to \texttt{0.0.0.0:chatPort} (all network interfaces, user-specified chat port) with \texttt{SO\_REUSEADDR = true} and \texttt{EnableBroadcast = true}. It is dedicated to receiving all incoming broadcast traffic (\texttt{join}, \texttt{heartbeat}, \texttt{leave}, and general \texttt{msg}).
+        \item \textbf{Private Unicast Socket}: Bound to \texttt{0.0.0.0:0} (all interfaces, ephemeral port assigned dynamically by the OS kernel). This socket is used to transmit all outgoing traffic (broadcasts and unicasts) and to receive incoming direct unicast traffic (\texttt{pm}, \texttt{join\_reply}, \texttt{name\_taken}). This resolves the Linux shared-port unicast routing collision.
+    \end{enumerate}
+
+    \item \textbf{What does the checksum in the UDP header protect against? Why is it not enough against somebody who changes your datagrams on purpose?}
+    
+    \textit{Answer}:
+    \begin{itemize}[noitemsep]
+        \item The UDP checksum is a 16-bit one's complement sum covering the UDP pseudo-header (source IP, destination IP, protocol number, UDP length), the UDP header, and the data payload. Its purpose is to detect accidental, non-malicious bit flips caused by physical transmission errors, line noise, or faulty memory buffers.
+        \item It is completely ineffective against deliberate tampering because the checksum algorithm is public, deterministic, and contains no secret cryptographic key. An attacker who intercepts a datagram can modify the payload and easily recalculate the valid one's complement checksum. Cryptographic integrity requires keyed cryptographic mechanisms, which is why our chat employs AES-256-GCM authentication tags.
+    \end{itemize}
+\end{enumerate}
+
+% -------------------------------------------------------------
+% Section 7: Build, Execution and Verification Instructions
+% -------------------------------------------------------------
+\section{Build, Execution and Verification Instructions}
+
+\subsection{Compilation}
+The system targets .NET 10.0 and compiles cleanly using the official CLI toolchain:
+\begin{lstlisting}[language=bash]
+cd LAN-Chat
+dotnet build
+\end{lstlisting}
+
+\subsection{CLI Execution Syntax}
+To launch a peer instance:
+\begin{lstlisting}[language=bash]
+dotnet run -- <name> <port> <passphrase>
+\end{lstlisting}
+
+\subsection{Multi-Peer Verification Trace}
+Below is the execution trace validating a three-peer session (\texttt{Ana}, \texttt{Ion}, \texttt{Maria}) on port 9123:
+
+\begin{lstlisting}[caption={Terminal 1 (Ana)}]
+$ dotnet run -- Ana 9123 secret-token
+* Ion joined the chat
+* Maria joined the chat
+hello everyone
+[general] Ana: hello everyone
+* Ion left the chat
+/quit
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Terminal 2 (Ion)}]
+$ dotnet run -- Ion 9123 secret-token
+* Maria joined the chat
+[general] Ana: hello everyone
+/msg Maria secret meet at five
+[private to Maria] secret meet at five
+/quit
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Terminal 3 (Maria)}]
+$ dotnet run -- Maria 9123 secret-token
+[general] Ana: hello everyone
+[private] Ion: secret meet at five
+/users
+* Online users (2):
+  - Ana (192.168.1.30:53145)
+  - Ion (192.168.1.30:33383)
+* Ion left the chat
+* Ana left the chat
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Terminal 4 (Testing Duplicate Name Conflict)}]
+$ dotnet run -- Ana 9123 secret-token
+Name 'Ana' is already taken.
+$ echo $?
+0
+\end{lstlisting}
+
+\subsection{Structured Log File Evidence}
+Excerpts from \texttt{chat-Maria-15747.log} validating transmission, reception, and byte counters:
+\begin{lstlisting}
+21:59:18.800 SENT 255.255.255.255:9123 join 54 bytes
+21:59:18.806 RECV 192.168.1.30:53145 join_reply 58 bytes
+21:59:18.859 RECV 192.168.1.30:33383 join_reply 58 bytes
+21:59:20.329 RECV 192.168.1.30:53145 msg 75 bytes
+21:59:21.334 RECV 192.168.1.30:33383 pm 141 bytes
+21:59:22.349 RECV 192.168.1.30:53145 heartbeat 57 bytes
+21:59:23.329 RECV 192.168.1.30:33383 leave 53 bytes
+\end{lstlisting}
+
+% -------------------------------------------------------------
+% Section 8: Conclusion
+% -------------------------------------------------------------
+\section{Conclusion}
+
+Through this laboratory work, we successfully engineered an autonomous, serverless peer-to-peer chat application operating directly over raw UDP datagram sockets. The project provided deep practical insights into:
+\begin{enumerate}[noitemsep]
+    \item Low-level OS socket behaviors, port sharing semantics under \texttt{SO\_REUSEADDR}, and the resolution of unicast routing ambiguity via our \textbf{Dual-Socket Architecture}.
+    \item Decentralized presence protocols, handling rapid dynamic join queries, heartbeat monitors, and silent process failure detection.
+    \item Modern applied cryptography, leveraging PBKDF2-HMAC-SHA256 for key derivation and AES-256-GCM for authenticated encryption.
+\end{enumerate}
+All four project tasks and control requirements were implemented, rigorously tested, and verified to achieve complete robustness and compliance with the laboratory specifications.
+
+\end{document}
