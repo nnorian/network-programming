@@ -11,7 +11,7 @@ namespace CoffeeShopServer{
 
             if (args.Length != 1 || !int.TryParse(args[0], out port) || port < 1 || port > 65535){
 
-                Console.WriteLine("Usage: dotnet run --project CoffeeServer -- <port>");
+                Console.WriteLine("Usage: dotnet run --project CoffeeShopServer -- <port>");
                 return;
             }
 

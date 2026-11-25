@@ -22,7 +22,7 @@ namespace CoffeeShopClient{
 
             if(args.Length < 2 || args.Length > 3 || !int.TryParse(args[1], out port) || port < 1 || port > 65535){
 
-                Console.WriteLine("Usage: dotnet run --project CoffeeClient -- <address> <port> [client|provider]");
+                Console.WriteLine("Usage: dotnet run --project CoffeeShopClient -- <address> <port> [client|provider]");
                 return;
             }
 
