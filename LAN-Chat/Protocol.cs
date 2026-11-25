@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 // the possible formats of the datagrams:
 // encode
 // decode 
-// chech em
+// check em
 namespace LanChat{
 
     public static class Protocol{
@@ -21,10 +21,10 @@ namespace LanChat{
         public const string Leave = "leave";
 
         static readonly HashSet<string> Types = new HashSet<string>{
-            Msg, Pm, Join, Joinreply, NameTaken, Heartbeat, Leave
+            Msg, Pm, Join, JoinReply, NameTaken, Heartbeat, Leave
         };
 
-        public const int MaxTeext = 500;
+        public const int MaxText = 500;
         public const int MaxName = 20;
         public const int MaxDatagram = 4096;
 
@@ -34,23 +34,21 @@ namespace LanChat{
         public static string MyName;
         public static readonly string MyId = Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
 
-        static readonly JsonSerializerOptions Option = new JsonSerializerOptions{
+        static readonly JsonSerializerOptions Options = new JsonSerializerOptions{
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreConditions = JsonIgnoreCondition.WhenWritingnull
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
         public static Message New(string type, string text = null){
-            return new Message{Type = type, From = myName, Id = MyId, Text = text};
-
+            return new Message{Type = type, From = MyName, Id = MyId, Text = text};
         }
 
         public static byte[] Encode(Message m){
             return JsonSerializer.SerializeToUtf8Bytes(m, Options);
         }
 
-        // false for anythin that is not a valid message 
+        // false for anything that is not a valid message 
         public static bool TryDecode(byte[] buffer, int length, out Message m, out string error){
-
             m = null;
             if (length > MaxDatagram){
                 error = "too long";
@@ -59,9 +57,7 @@ namespace LanChat{
 
             try{
                 m = JsonSerializer.Deserialize<Message>(buffer.AsSpan(0, length), Options);
-
             }
-
             catch (JsonException){
                 error = "not json";
                 return false;
@@ -71,27 +67,23 @@ namespace LanChat{
             return error == null;
         }
 
-        static string Check (Message m){
+        static string Check(Message m){
             if (m == null) return "empty";
             if (!Types.Contains(m.Type)) return "unknown type";
-            if (! IsValidName(m.From)) return "bad name";
+            if (!IsValidName(m.From)) return "bad name";
             if (string.IsNullOrEmpty(m.Id)) return "no id";
             if (m.Type == Msg && !IsValidText(m.Text)) return "bad text";
-            if (m.Type == Pm && (m.Nonce == null || m.Chiphertext == null)) return "bad pm";
+            if (m.Type == Pm && (m.Nonce == null || m.Ciphertext == null)) return "bad pm";
 
             return null;
-
         } 
 
         // accept letters digits _ and - as name
         // no spaces for the command writing purposes
-
-        public static bool IsValidName(strig name){
-
+        public static bool IsValidName(string name){
             if (string.IsNullOrEmpty(name) || name.Length > MaxName) return false;
 
             foreach (char c in name){
-
                 if (!char.IsLetterOrDigit(c) && c != '_' && c != '-') return false;
             }
 
@@ -99,16 +91,14 @@ namespace LanChat{
         }
 
         // max of 500 characters
-
-        public static bool IsValidtext(string text){
-            if (text = null || text.Length > MaxText) return false;
+        public static bool IsValidText(string text){
+            if (text == null || text.Length > MaxText) return false;
             
             foreach (char c in text){
-                if (char.Iscontrol(c)) return false;
+                if (char.IsControl(c)) return false;
             }
 
             return true;
         }
     }
-
 }
