@@ -25,7 +25,7 @@ namespace LanChat{
         // the timer and console
         // always locked
 
-        static Dictionary<string, Peer> peers = new Dictionary<string, Peer>();
+        static readonly Dictionary<string, Peer> peers = new Dictionary<string, Peer>();
         static Timer timer;
         static volatile bool nameTaken;
 
@@ -33,7 +33,7 @@ namespace LanChat{
         // wats for answers
         // false when the declared name is already in use
 
-        public static Join(){
+        public static bool Join(){
             Net.Broadcast(Protocol.New(Protocol.Join));
             Thread.Sleep(JoinWaitMs);
             if(nameTaken) return false;
@@ -62,26 +62,25 @@ namespace LanChat{
 
             lock(peers){
                 Peer know;
-                peer.TryGetValue(m.From, out know);
+                peers.TryGetValue(m.From, out know);
 
                 // same name
                 //another runninh copy
 
-                bool otherOwner = m.From == Protocol.MyName || (know != null && knowId != m.Id);
+                bool otherOwner = m.From == Protocol.MyName || (know != null && know.Id != m.Id);
 
                 switch (m.Type){
 
                     case Protocol.Join:
-                    if (otherOwner){
+                        if (otherOwner){
+                            Net.SendTo(from, Protocol.New(Protocol.NameTaken));
+                            return;
+                        }
+
+                        Seen(m, from);
                         Net.SendTo(from, Protocol.New(Protocol.JoinReply));
-                        return;
+                        break;
 
-                    }
-
-                    Seen(m, from);
-                    Net.SendTo(from, Protocol.New(Protocol.JoinReply));
-                    break;
-                
                 case Protocol.JoinReply:
                 case Protocol.Heartbeat:
                     if (!otherOwner) Seen(m, from);
@@ -98,11 +97,19 @@ namespace LanChat{
             }
         }
 
-        public static bool TryGetPoint(string name, out IPEndPoint endpoint){
+        public static bool TryGetEndPoint(string name, out IPEndPoint endpoint){
             lock (peers){
-                Console.WriteLine(" online: " + Protocol.MyName + "(you)");
-                foeach (KeyValuePair<string, Peer> pair in peers){
-                    Console.WriteLine(" ", + pair.Key + " " + pair.Value.EndPoint);
+                Peer p;
+                endpoint = peers.TryGetValue(name, out p) ? p.EndPoint : null;
+                return endpoint != null;
+            }
+        }
+
+        public static void PrintUsers(){
+            lock (peers){
+                Console.WriteLine("* online: " + Protocol.MyName + " (you)");
+                foreach (KeyValuePair<string, Peer> pair in peers){
+                    Console.WriteLine("    " + pair.Key + " " + pair.Value.EndPoint);
                 }
             }
         }
@@ -113,13 +120,13 @@ namespace LanChat{
         static void Seen(Message m, IPEndPoint from){
             Peer p;
             if(!peers.TryGetValue(m.From, out p)){
-                p = newPeer{Id = m.Td};
+                p = new Peer{Id = m.Id};
                 peers[m.From] = p;
 
                 // a join_reply is an old memeber answering
                 // not new
 
-                if (m.Type != Protocol.JoinReply) Console.WriteLine(" " + m.From + " joined the chat");
+                if (m.Type != Protocol.JoinReply) Console.WriteLine("* " + m.From + " joined the chat");
 
             }
 
@@ -127,9 +134,9 @@ namespace LanChat{
             p.LastSeen = DateTime.UtcNow;
         }
 
-        static void remove(string name){
+        static void Remove(string name){
             peers.Remove(name);
-            Console.WriteLine(" " + name + " left the chat");
+            Console.WriteLine("* " + name + " left the chat");
 
 
         }

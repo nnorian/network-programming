@@ -1,16 +1,13 @@
 // console ui, command parser and lifecycle management
 
 using System;
-using System.Collections.Generic;
-using System.Threading;
+using System.Net;
 
 namespace LanChat{
 
     public static class Program{
 
         static volatile bool running = true;
-        static Timer heartbeatTimer;
-        static Timer timeoutTimer;
 
         public static void Main(string[] args){
             if (args.Length < 3){
@@ -46,31 +43,12 @@ namespace LanChat{
             Net.Start(port);
 
             // task 2: announce presence and check if name is taken
-            Net.Broadcast(Protocol.New(Protocol.Join));
-
             // wait up to 1 second for any name_taken response
-            if (Net.WaitForNameConflict(1000)){
+            if (!Presence.Join()){
                 Console.WriteLine($"Name '{name}' is already taken.");
                 Net.Stop();
                 return;
             }
-
-            // task 2: heartbeat every 5 seconds
-            heartbeatTimer = new Timer(_ => {
-                if (running){
-                    Net.Broadcast(Protocol.New(Protocol.Heartbeat));
-                }
-            }, null, 5000, 5000);
-
-            // task 2: check timeouts every 1 second (15s inactivity = gone)
-            timeoutTimer = new Timer(_ => {
-                if (running){
-                    List<string> expired = Peers.CheckTimeouts(TimeSpan.FromSeconds(15));
-                    foreach (string exp in expired){
-                        Console.WriteLine($"* {exp} left the chat");
-                    }
-                }
-            }, null, 1000, 1000);
 
             // interactive input loop
             while (running){
@@ -82,21 +60,12 @@ namespace LanChat{
 
                 if (line.Equals("/quit", StringComparison.OrdinalIgnoreCase)){
                     running = false;
-                    Net.Broadcast(Protocol.New(Protocol.Leave));
+                    Presence.Leave();
                     break;
                 }
 
                 if (line.Equals("/users", StringComparison.OrdinalIgnoreCase)){
-                    var list = Peers.GetAll();
-                    if (list.Count == 0){
-                        Console.WriteLine("* No other users online");
-                    }
-                    else{
-                        Console.WriteLine($"* Online users ({list.Count}):");
-                        foreach (var peer in list){
-                            Console.WriteLine($"  - {peer.Name} ({peer.EndPoint})");
-                        }
-                    }
+                    Presence.PrintUsers();
                     continue;
                 }
 
@@ -122,22 +91,14 @@ namespace LanChat{
                         continue;
                     }
 
-                    if (!Peers.TryGet(target, out var targetPeer)){
+                    if (!Presence.TryGetEndPoint(target, out IPEndPoint targetEndPoint)){
                         Console.WriteLine($"* {target} is not online");
                         continue;
                     }
 
                     // task 4: encrypt private message
-                    if (Crypto.Encrypt(target, text, out string nonce, out string cipher)){
-                        var pm = Protocol.New(Protocol.Pm);
-                        pm.Nonce = nonce;
-                        pm.Ciphertext = cipher;
-                        Net.SendTo(targetPeer.EndPoint, pm);
-                        Console.WriteLine($"[private to {target}] {text}");
-                    }
-                    else{
-                        Console.WriteLine("Error: encryption failed");
-                    }
+                    Net.SendTo(targetEndPoint, Crypto.EncryptPm(target, text));
+                    Console.WriteLine($"[private to {target}] {text}");
                     continue;
                 }
 
@@ -156,8 +117,6 @@ namespace LanChat{
                 Console.WriteLine($"[general] {name}: {line}");
             }
 
-            heartbeatTimer?.Dispose();
-            timeoutTimer?.Dispose();
             Net.Stop();
         }
     }

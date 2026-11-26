@@ -17,14 +17,9 @@ namespace LanChat{
         static Thread broadcastThread;
         static Thread privateThread;
 
-        static readonly ManualResetEvent nameTakenSignal = new ManualResetEvent(false);
-        public static volatile bool NameTakenReceived = false;
-
         public static void Start(int port){
             chatPort = port;
             running = true;
-            NameTakenReceived = false;
-            nameTakenSignal.Reset();
 
             // task 1: bind general broadcast socket on shared port
             broadcastSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -55,10 +50,6 @@ namespace LanChat{
             running = false;
             try{ broadcastSocket?.Close(); } catch { }
             try{ privateSocket?.Close(); } catch { }
-        }
-
-        public static bool WaitForNameConflict(int timeoutMs){
-            return nameTakenSignal.WaitOne(timeoutMs) && NameTakenReceived;
         }
 
         // task 1: broadcast to general channel
@@ -103,7 +94,7 @@ namespace LanChat{
         }
 
         static void ReceiveLoop(Socket sock, bool isBroadcast){
-            byte[] buffer = new byte[Protocol.MaxDatagram + 512];
+            byte[] buffer = new byte[65536];
 
             while (running){
                 EndPoint remote = new IPEndPoint(IPAddress.Any, 0);
@@ -142,57 +133,27 @@ namespace LanChat{
             switch (m.Type){
                 // task 2: presence join
                 case Protocol.Join:
-                    if (string.Equals(m.From, Protocol.MyName, StringComparison.OrdinalIgnoreCase)){
-                        // someone trying to join with our name
-                        SendTo(fromEp, Protocol.New(Protocol.NameTaken));
-                    }
-                    else{
-                        // reply unicast with our presence
-                        SendTo(fromEp, Protocol.New(Protocol.JoinReply));
-                        bool isNew = Peers.Update(m.From, m.Id, fromEp);
-                        if (isNew){
-                            Console.WriteLine($"* {m.From} joined the chat");
-                        }
-                    }
-                    break;
-
                 // task 2: presence join_reply
                 case Protocol.JoinReply:
-                    Peers.Update(m.From, m.Id, fromEp);
-                    break;
-
                 // task 2: name conflict detected
                 case Protocol.NameTaken:
-                    NameTakenReceived = true;
-                    nameTakenSignal.Set();
-                    break;
-
                 // task 2: liveness heartbeat
                 case Protocol.Heartbeat:
-                    if (!string.Equals(m.From, Protocol.MyName, StringComparison.OrdinalIgnoreCase)){
-                        Peers.Update(m.From, m.Id, fromEp);
-                    }
-                    break;
-
                 // task 2: graceful leave
                 case Protocol.Leave:
-                    if (Peers.Remove(m.From)){
-                        Console.WriteLine($"* {m.From} left the chat");
-                    }
+                    Presence.Handle(m, fromEp);
                     break;
 
                 // task 1: general channel message
                 case Protocol.Msg:
                     if (!string.Equals(m.From, Protocol.MyName, StringComparison.OrdinalIgnoreCase)){
-                        Peers.Update(m.From, m.Id, fromEp);
                         Console.WriteLine($"[general] {m.From}: {m.Text}");
                     }
                     break;
 
                 // task 3 & 4: secure private message
                 case Protocol.Pm:
-                    Peers.Update(m.From, m.Id, fromEp);
-                    if (Crypto.Decrypt(m.From, m.Nonce, m.Ciphertext, out string plainText)){
+                    if (Crypto.TryDecryptPm(m, out string plainText)){
                         Console.WriteLine($"[private] {m.From}: {plainText}");
                     }
                     else{
