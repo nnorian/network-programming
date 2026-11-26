@@ -1,14 +1,11 @@
-// task 4
-// private messages
-// encrypted with AES-256-GCM
-
 using System;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace LanChat{
+    // task 4: private messages are encrypted with AES-256-GCM
     public static class Crypto{
-
+        // fixed for the chat: every peer must derive the same key without talking first
         static readonly byte[] Salt = Encoding.UTF8.GetBytes("LAN-Chat salt v1");
         const int Iterations = 600000;
         const int KeySize = 32;
@@ -21,59 +18,48 @@ namespace LanChat{
             key = Rfc2898DeriveBytes.Pbkdf2(passphrase, Salt, Iterations, HashAlgorithmName.SHA256, KeySize);
         }
 
-        public static bool Encrypt(string to, string text, out string nonceBase64, out string cipherBase64){
-            nonceBase64 = null;
-            cipherBase64 = null;
-            if (key == null) return false;
-
+        public static Message EncryptPm(string to, string text){
             byte[] nonce = RandomNumberGenerator.GetBytes(NonceSize);
-            byte[] plaintext = Encoding.UTF8.GetBytes(text);
-            byte[] ciphertext = new byte[plaintext.Length];
-            byte[] tag = new byte[TagSize];
-            byte[] ad = Encoding.UTF8.GetBytes(Protocol.MyName + ">" + to);
+            byte[] plain = Encoding.UTF8.GetBytes(text);
+            byte[] box = new byte[plain.Length + TagSize]; // ciphertext, then the tag
 
-            using (var aes = new AesGcm(key, TagSize)){
-                aes.Encrypt(nonce, plaintext, ciphertext, tag, ad);
+            using (AesGcm aes = new AesGcm(key, TagSize)){
+                aes.Encrypt(nonce, plain, box.AsSpan(0, plain.Length), box.AsSpan(plain.Length), Names(Protocol.MyName, to));
             }
 
-            // wire format: ciphertext followed by tag
-            byte[] combined = new byte[ciphertext.Length + TagSize];
-            Buffer.BlockCopy(ciphertext, 0, combined, 0, ciphertext.Length);
-            Buffer.BlockCopy(tag, 0, combined, ciphertext.Length, TagSize);
-
-            nonceBase64 = Convert.ToBase64String(nonce);
-            cipherBase64 = Convert.ToBase64String(combined);
-            return true;
+            Message m = Protocol.New(Protocol.Pm);
+            m.Nonce = Convert.ToBase64String(nonce);
+            m.Ciphertext = Convert.ToBase64String(box);
+            return m;
         }
 
-        public static bool Decrypt(string from, string nonceBase64, string cipherBase64, out string plaintext){
-            plaintext = null;
-            if (key == null) return false;
-
+        // false when the message was changed, sent to someone else, or made with another key
+        public static bool TryDecryptPm(Message m, out string text){
+            text = null;
             try{
-                byte[] nonce = Convert.FromBase64String(nonceBase64);
-                byte[] combined = Convert.FromBase64String(cipherBase64);
-                if (combined.Length < TagSize || nonce.Length != NonceSize) return false;
+                byte[] nonce = Convert.FromBase64String(m.Nonce);
+                byte[] box = Convert.FromBase64String(m.Ciphertext);
+                if (nonce.Length != NonceSize || box.Length < TagSize) return false;
 
-                int cipherLen = combined.Length - TagSize;
-                byte[] ciphertext = new byte[cipherLen];
-                byte[] tag = new byte[TagSize];
-                Buffer.BlockCopy(combined, 0, ciphertext, 0, cipherLen);
-                Buffer.BlockCopy(combined, cipherLen, tag, 0, TagSize);
-
-                byte[] ad = Encoding.UTF8.GetBytes(from + ">" + Protocol.MyName);
-                byte[] decrypted = new byte[cipherLen];
-
-                using (var aes = new AesGcm(key, TagSize)){
-                    aes.Decrypt(nonce, ciphertext, tag, decrypted, ad);
+                int n = box.Length - TagSize;
+                byte[] plain = new byte[n];
+                using (AesGcm aes = new AesGcm(key, TagSize)){
+                    aes.Decrypt(nonce, box.AsSpan(0, n), box.AsSpan(n), plain, Names(m.From, Protocol.MyName));
                 }
+                text = Encoding.UTF8.GetString(plain);
+                return Protocol.IsValidText(text);
+            }
+            catch (FormatException){
+                return false; // not base64
+            }
+            catch (CryptographicException){
+                return false; // the tag does not match
+            }
+        }
 
-                plaintext = Encoding.UTF8.GetString(decrypted);
-                return true;
-            }
-            catch{
-                return false;
-            }
+        // authenticated, not encrypted: the sender and receiver cannot be swapped
+        static byte[] Names(string from, string to){
+            return Encoding.UTF8.GetBytes(from + ">" + to);
         }
     }
 }
