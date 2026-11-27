@@ -63,6 +63,15 @@ namespace LanChat{
                     Presence.Leave();
                     break;
                 }
+                
+                if (line.StartsWith("/me", StringComparison.OrdinalIgnoreCase)){
+                    string rest = line.Substring(4).TrimStart();
+                    int spaceIdx = rest.IndexOf(' ');
+                    string text = rest.Substring(spaceIdx + 1).Trim();
+                    Net.SendTo(new IPEndPoint(IPAddress.Any, port), Protocol.New(Protocol.Msg, line));
+                    Console.WriteLine($"[private to {Protocol.MyName}] {text}");
+                    continue;
+                }
 
                 if (line.Equals("/users", StringComparison.OrdinalIgnoreCase)){
                     Presence.PrintUsers();
